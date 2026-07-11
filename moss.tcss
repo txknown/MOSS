@@ -1,0 +1,52 @@
+Screen {
+    layout: vertical;
+}
+
+#layout {
+    height: 1fr;
+}
+
+#sidebar {
+    width: 34;
+    border: solid $accent;
+}
+
+#sidebar-title {
+    padding: 1;
+    text-style: bold;
+}
+
+#navigation-list {
+    height: 1fr;
+}
+
+#main {
+    width: 1fr;
+    border: solid $accent;
+}
+
+#detail {
+    height: 1fr;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
+#child-title {
+    height: 1;
+    padding: 0 2;
+    text-style: bold;
+}
+
+#child-list {
+    height: 8;
+    border-top: solid $accent;
+}
+
+#status {
+    height: 1;
+    padding: 0 2;
+}
+
+#command {
+    dock: bottom;
+}

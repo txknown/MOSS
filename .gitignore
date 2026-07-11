@@ -1,0 +1,9 @@
+.venv/
+memory/
+__pycache__/
+*.pyc
+.DS_Store
+__MACOSX/
+backups/
+memory_backup*/
+memory_test_backup*/
