@@ -1,26 +1,13 @@
 from importlib import import_module
 
 
-NODE_TYPE_NAMES = [
-    "page",
-    "text",
-    "todo_list",
-    "todo_item",
-    "image",
-]
+from core.action_catalog import action_type_names
+from core.node_schema import node_type_names
 
-ACTION_TYPE_NAMES = [
-    "create_node",
-    "set_content",
-    "add_content",
-    "edit_content",
-    "set_attribute",
-    "link_node",
-    "unlink_node",
-    "move_child",
-    "session_started",
-    "session_ended",
-]
+
+NODE_TYPE_NAMES = list(node_type_names())
+
+ACTION_TYPE_NAMES = list(action_type_names())
 
 
 def known_node_types():

@@ -1,4 +1,13 @@
 from node_types import pad
+from core.node_schema import module_contract
+
+
+(
+    ALLOWED_ATTRIBUTES,
+    ATTRIBUTE_DEFAULTS,
+    ATTRIBUTE_TYPES,
+    SYSTEM_MANAGED_ATTRIBUTES,
+) = module_contract("todo_list")
 
 
 def render(memory, meta, indent=0, render_child=None):
@@ -6,7 +15,11 @@ def render(memory, meta, indent=0, render_child=None):
     children = meta.get("children", [])
     if children and render_child:
         for child_id in children:
-            lines.append(render_child(child_id, indent + 1))
-    else:
-        lines.append(f"{pad(indent + 1)}(empty todo list)")
+            try:
+                child = memory.load_meta(child_id)
+            except FileNotFoundError:
+                lines.append(f"{pad(indent + 1)}- Missing child node.")
+                continue
+            if child.get("type") == "todo_item":
+                lines.append(render_child(child_id, indent + 1))
     return "\n".join(lines)

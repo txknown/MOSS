@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from textual.app import App, ComposeResult
@@ -7,7 +8,8 @@ from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, St
 from core.action_runner import ActionRunner
 from core.memory import Memory
 from core.renderer import render_node
-from core.registry import known_action_types, known_node_types
+from core.registry import known_node_types, load_node_type
+from core.search import format_search_results, search_nodes
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -22,11 +24,18 @@ Commands:
   set <text>
   add <text>
   edit
+  info
+  attributes
   setattr <field> <value>
   link <node_id>
   unlink <node_id>
   move up <node_id>
   move down <node_id>
+  move <node_id> before <reference_node_id>
+  move <node_id> after <reference_node_id>
+  snapshot <snapshot_name>
+  search <query>
+  trash <node_id>  (permanently deletes the node)
   all pages
   all node types
   all action types
@@ -38,17 +47,27 @@ Commands:
 Node types:
   page
   text
+  note
   todo_list
   todo_item
   image
+  randomizer
+  calendar
+  week
+  event
 """.strip()
 
 TYPE_LABELS = {
     "page": "page",
     "text": "text",
+    "note": "note",
     "todo_list": "todo_list",
     "todo_item": "todo_item",
     "image": "image",
+    "randomizer": "randomizer",
+    "calendar": "calendar",
+    "week": "week",
+    "event": "event",
 }
 
 NAVIGATION_ITEMS = [
@@ -60,27 +79,19 @@ NAVIGATION_ITEMS = [
 ]
 
 NODE_TYPE_HELP = {
-    "page": "new page <node_id>",
-    "text": "new text OR new text <node_id>",
-    "todo_list": "new todo_list <node_id>",
-    "todo_item": "new todo_item",
-    "image": "new image <node_id>",
+    "page": "container node; may include a title and optional visible/hidden description",
+    "text": "inline content node; renders content directly on parent pages",
+    "note": "titled content node; renders as a card/link on parent pages and displays full content when opened",
+    "todo_list": "container node; holds todo_item children and handles list ordering behavior",
+    "todo_item": "content node with checked and system-managed date_completed",
+    "image": "reference node; points to a material/source path",
+    "randomizer": "content node containing one phrase per line; renders a random selection",
+    "calendar": "container node; presents week children as a calendar",
+    "week": "container node; starts on a Monday and holds event children",
+    "event": "scheduled node with a title, notes, weekday number, start time, and end time",
 }
 
-ACTION_DESCRIPTIONS = {
-    "create_node": "Tree action: create a node.",
-    "link_node": "Tree action: link a node under a parent.",
-    "unlink_node": "Tree action: unlink a child from a parent.",
-    "move_child": "Tree action: move a child up or down.",
-    "set_content": "Content action: replace content.txt.",
-    "add_content": "Content action: add text to content.txt.",
-    "edit_content": "Content action: open content.txt in $EDITOR if configured.",
-    "set_attribute": "Attribute action: set a top-level node.json field.",
-    "session_started": "System action: log MOSS start.",
-    "session_ended": "System action: log MOSS end.",
-}
-
-PARENT_TYPES = {"page", "todo_list"}
+PARENT_TYPES = {"page", "todo_list", "calendar", "week"}
 
 
 class NavigationItem(ListItem):
@@ -114,7 +125,8 @@ class MossApp(App):
                 yield Static("MOSS", id="sidebar-title")
                 yield ListView(id="navigation-list")
             with Vertical(id="main"):
-                yield Static("", id="detail")
+                # Node renderers emit literal labels such as [x], [note], and [page].
+                yield Static("", id="detail", markup=False)
                 yield Static("Children / Page Links", id="child-title")
                 yield ListView(id="child-list")
                 yield Static("", id="status")
@@ -193,7 +205,7 @@ class MossApp(App):
                 return
 
             if command.lower() in {"all pages", "pages"}:
-                await self._show_collection("All Pages", "page")
+                await self._show_pages_tree()
                 return
 
             if command.lower() in {"all node types", "node types"}:
@@ -225,6 +237,14 @@ class MossApp(App):
                 await self.show_node(parts[1])
                 return
 
+            if head == "search":
+                await self._command_search(command[len("search") :].strip())
+                return
+
+            if head == "snapshot":
+                await self._command_snapshot(parts[1:] if len(parts) >= 2 else [])
+                return
+
             if head == "new" and len(parts) >= 2:
                 node_id = parts[2] if len(parts) >= 3 else None
                 await self._command_new(parts[1], node_id)
@@ -242,6 +262,10 @@ class MossApp(App):
                 await self._command_edit()
                 return
 
+            if head in {"info", "attributes"}:
+                await self._command_info()
+                return
+
             if head == "setattr" and len(parts) >= 3:
                 await self._command_setattr(parts[1], command.split(maxsplit=2)[2])
                 return
@@ -255,7 +279,11 @@ class MossApp(App):
                 return
 
             if head == "move" and len(parts) >= 3:
-                await self._command_move(parts[1].lower(), parts[2])
+                await self._command_move(parts[1:])
+                return
+
+            if head == "trash":
+                await self._command_trash(parts[1] if len(parts) >= 2 else None)
                 return
         except Exception as error:
             await self.show_message(str(error))
@@ -297,16 +325,24 @@ class MossApp(App):
             await self.show_message("Select a node first.")
             return
         result = self.actions.run("edit_content", payload={"node_id": self.selected_id})
-        await self.show_message(f"Content file:\n{result['path']}")
+        if result.get("opened"):
+            await self.show_message(f"Opened content file:\n{result['path']}")
+        else:
+            await self.show_message(f"Could not open an editor. Content file:\n{result['path']}")
+
+    async def _command_info(self):
+        if not self.selected_id:
+            await self.show_message("Select a node first.")
+            return
+        await self.show_message(self._format_node_info(self.selected_id))
 
     async def _command_setattr(self, field, value):
         if not self.selected_id:
             await self.show_message("Select a node first.")
             return
-        parsed_value = self._parse_value(value)
         self.actions.run(
             "set_attribute",
-            payload={"node_id": self.selected_id, "field": field, "value": parsed_value},
+            payload={"node_id": self.selected_id, "field": field, "value": value},
         )
         await self.show_node(self.selected_id)
 
@@ -324,13 +360,48 @@ class MossApp(App):
         self.actions.run("unlink_node", payload={"parent_id": parent_id, "child_id": child_id})
         await self.show_node(parent_id)
 
-    async def _command_move(self, direction, child_id):
-        if direction not in {"up", "down"}:
-            await self.show_message("Use: move up <node_id> or move down <node_id>")
-            return
+    async def _command_move(self, arguments):
         parent_id = self._target_parent_id() or "home"
-        self.actions.run("move_child", payload={"parent_id": parent_id, "child_id": child_id, "direction": direction})
+        if len(arguments) == 2 and arguments[0].lower() in {"up", "down"}:
+            payload = {"parent_id": parent_id, "child_id": arguments[1], "direction": arguments[0].lower()}
+        elif len(arguments) == 3 and arguments[1].lower() in {"before", "after"}:
+            payload = {
+                "parent_id": parent_id,
+                "child_id": arguments[0],
+                "position": arguments[1].lower(),
+                "reference_id": arguments[2],
+            }
+        else:
+            await self.show_message(
+                "Use: move up <node_id>, move down <node_id>, or "
+                "move <node_id> before/after <reference_node_id>"
+            )
+            return
+        self.actions.run("move_child", payload=payload)
         await self.show_node(parent_id)
+
+    async def _command_snapshot(self, arguments):
+        if len(arguments) != 1:
+            await self.show_message("Use: snapshot <snapshot_name>")
+            return
+        result = self.actions.run("snapshot", payload={"name": arguments[0]})
+        await self.show_message(f"Created snapshot: {result['name']}\n{result['path']}")
+
+    async def _command_search(self, query):
+        results = search_nodes(self.memory, query)
+        await self.show_message(format_search_results(query, results))
+
+    async def _command_trash(self, node_id):
+        trashed_id = self.memory.clean_id(node_id)
+        self.actions.run("trash_node", payload={"node_id": trashed_id})
+
+        if self.selected_id == trashed_id or self.active_page_id == trashed_id:
+            self.active_page_id = "home"
+            await self.show_node("home")
+        elif self.selected_id and self.memory.node_exists(self.selected_id):
+            await self.show_node(self.selected_id)
+        else:
+            await self.show_node("home")
 
     async def _command_where(self):
         selected_type = "(none)"
@@ -357,7 +428,7 @@ class MossApp(App):
         if nav_key == "home":
             await self.show_node("home")
         elif nav_key == "pages":
-            await self._show_collection("All Pages", "page")
+            await self._show_pages_tree()
         elif nav_key == "node_types":
             await self._show_node_types()
         elif nav_key == "action_types":
@@ -378,6 +449,46 @@ class MossApp(App):
         await self._set_child_items(items)
         self._update_status()
 
+    async def _show_pages_tree(self):
+        pages = {meta["id"]: meta for meta in self._read_all_node_metas() if meta.get("type") == "page"}
+        visited = set()
+        lines = ["All Pages", ""]
+
+        if "home" in pages:
+            lines.extend(self._page_tree_lines("home", pages, visited, 0))
+        else:
+            lines.append("home (missing)")
+
+        unlinked = [page_id for page_id in sorted(pages) if page_id not in visited]
+        lines.append("")
+        lines.append("Unlinked Pages:")
+        if unlinked:
+            lines.extend(f"  {page_id}" for page_id in unlinked)
+        else:
+            lines.append("  (none)")
+
+        self.selected_id = None
+        self.query_one("#detail", Static).update("\n".join(lines))
+        await self._set_child_items([pages[page_id] for page_id in sorted(pages)])
+        self._update_status()
+
+    def _page_tree_lines(self, page_id, pages, visited, depth):
+        indent = "  " * depth
+        if page_id in visited:
+            return [f"{indent}{page_id} (already shown)"]
+
+        meta = pages.get(page_id)
+        if not meta:
+            return [f"{indent}{page_id} (missing)"]
+
+        visited.add(page_id)
+        lines = [f"{indent}{page_id}"]
+        for child_id in meta.get("children", []):
+            child = pages.get(child_id)
+            if child:
+                lines.extend(self._page_tree_lines(child["id"], pages, visited, depth + 1))
+        return lines
+
     async def _show_node_types(self):
         self.selected_id = None
         lines = ["All Node Types", ""]
@@ -389,9 +500,37 @@ class MossApp(App):
 
     async def _show_action_types(self):
         self.selected_id = None
-        lines = ["All Action Types", ""]
-        for action_type in known_action_types():
-            lines.append(f"- {action_type}: {ACTION_DESCRIPTIONS.get(action_type, 'Action.')}")
+        lines = [
+            "All Action Types",
+            "",
+            "Tree actions:",
+            "- new",
+            "- link",
+            "- unlink",
+            "- move",
+            "- trash",
+            "",
+            "Content/attribute actions:",
+            "- set",
+            "- add",
+            "- edit",
+            "- setattr",
+            "",
+            "Memory/safety actions:",
+            "- snapshot",
+            "",
+            "System/read actions:",
+            "- home",
+            "- open",
+            "- info / attributes",
+            "- search",
+            "- all pages",
+            "- all node types",
+            "- all action types",
+            "- action log",
+            "- history",
+            "- refresh",
+        ]
         self.query_one("#detail", Static).update("\n".join(lines))
         await self._set_child_items([])
         self._update_status()
@@ -436,14 +575,6 @@ class MossApp(App):
                 return selected["id"]
         return self.active_page_id or "home"
 
-    def _parse_value(self, value):
-        lower = str(value).strip().lower()
-        if lower == "true":
-            return True
-        if lower == "false":
-            return False
-        return value
-
     def _update_status(self):
         status = f"selected: {self.selected_id or '(none)'}    active page: {self.active_page_id or '(none)'}"
         self.query_one("#status", Static).update(status)
@@ -451,13 +582,122 @@ class MossApp(App):
     def _node_label(self, meta):
         return meta.get("title") or meta["id"]
 
+    def _format_node_info(self, node_id):
+        meta = self._read_node_meta(node_id)
+        if not meta:
+            return f"Node not found: {node_id}"
+
+        node_id = meta.get("id") or self.memory.clean_id(node_id)
+        content_path = self.memory.content_path(node_id)
+        try:
+            content_length = len(content_path.read_text(encoding="utf-8"))
+        except OSError:
+            content_length = 0
+
+        children = meta.get("children", [])
+        parents = self._parent_ids_for(node_id)
+        node_type_name = meta.get("type", "(unknown)")
+        try:
+            node_type = load_node_type(node_type_name)
+            allowed = tuple(getattr(node_type, "ALLOWED_ATTRIBUTES", ()))
+            defaults = dict(getattr(node_type, "ATTRIBUTE_DEFAULTS", {}))
+            managed = set(getattr(node_type, "SYSTEM_MANAGED_ATTRIBUTES", ()))
+        except KeyError:
+            allowed = ()
+            defaults = {}
+            managed = set()
+        standard_fields = {"id", "type", "children", "files", "created", "updated", *allowed}
+        extras = [(key, meta[key]) for key in sorted(meta) if key not in standard_fields]
+
+        lines = [
+            f"Node: {node_id}",
+            f"Type: {node_type_name}",
+            "",
+            "Allowed attributes:",
+        ]
+        if allowed:
+            for field in allowed:
+                suffix = " (system-managed)" if field in managed else ""
+                if field in meta:
+                    value = self._format_value(meta[field])
+                elif field in defaults:
+                    value = f"(unset; default: {self._format_value(defaults[field])})"
+                else:
+                    value = "(unset)"
+                lines.append(f"{field}: {value}{suffix}")
+        else:
+            lines.append("(none)")
+        lines.extend(
+            [
+                "",
+                "Children:",
+                f"{len(children)} children",
+                *[f"- {child_id}" for child_id in children],
+                "",
+                "Details:",
+                f"content path: {content_path}",
+                f"content length: {content_length}",
+                f"parent IDs: {', '.join(parents) if parents else '(none)'}",
+                f"created: {meta.get('created', '(unknown)')}",
+                f"updated: {meta.get('updated', '(unknown)')}",
+            ]
+        )
+        if extras:
+            lines.append("extra fields:")
+            for key, value in extras:
+                lines.append(f"  {key}: {self._format_value(value)}")
+        return "\n".join(lines)
+
+    def _parent_ids_for(self, node_id):
+        parents = []
+        for meta in self._read_all_node_metas():
+            if node_id in meta.get("children", []):
+                parents.append(meta.get("id", ""))
+        return sorted(parent_id for parent_id in parents if parent_id)
+
+    def _read_all_node_metas(self):
+        metas = []
+        if not self.memory.nodes.exists():
+            return metas
+        for path in self.memory.nodes.iterdir():
+            if path.is_dir():
+                meta = self._read_node_meta(path.name)
+                if meta:
+                    metas.append(meta)
+        return metas
+
+    def _read_node_meta(self, node_id):
+        path = self.memory.meta_path(node_id)
+        try:
+            meta = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        meta.setdefault("id", self.memory.clean_id(node_id))
+        meta.setdefault("type", "text")
+        meta.setdefault("children", [])
+        return meta
+
+    def _format_value(self, value):
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, ensure_ascii=True)
+        if value is None:
+            return "null"
+        if isinstance(value, bool):
+            return str(value).lower()
+        return str(value)
+
     def _navigation_sort_key(self, meta):
         type_rank = {
             "page": 1,
             "todo_list": 2,
-            "text": 3,
-            "todo_item": 4,
-            "image": 5,
+            "note": 3,
+            "text": 4,
+            "todo_item": 5,
+            "image": 6,
+            "randomizer": 7,
+            "calendar": 8,
+            "week": 9,
+            "event": 10,
         }
         if meta["id"] == "home":
             return (0, "", "")

@@ -1,31 +1,41 @@
-from node_types import content, indent_text, pad
+from node_types import pad
+from core.node_schema import module_contract
+
+
+(
+    ALLOWED_ATTRIBUTES,
+    ATTRIBUTE_DEFAULTS,
+    ATTRIBUTE_TYPES,
+    SYSTEM_MANAGED_ATTRIBUTES,
+) = module_contract("page")
 
 
 def render(memory, meta, indent=0, render_child=None):
     title = meta.get("title") or meta["id"]
-    lines = [
-        f"{pad(indent)}{title}",
-        f"{pad(indent)}{'=' * max(len(title), 4)}",
-    ]
-
-    body = content(memory, meta)
-    if body:
-        lines.append("")
-        lines.append(indent_text(body, indent))
+    heading = f"{pad(indent)}{title}"
+    description = meta.get("description", "")
+    if description and meta.get("description_visible", True) is True:
+        heading = f"{heading}\n{pad(indent)}{description}"
+    blocks = [heading]
 
     children = meta.get("children", [])
     if children and render_child:
-        lines.append("")
         for child_id in children:
             try:
                 child = memory.load_meta(child_id)
             except FileNotFoundError:
-                lines.append(f"{pad(indent)}- Missing child node.")
+                blocks.append(f"{pad(indent + 1)}- Missing child node.")
                 continue
 
             if child.get("type") == "page":
-                lines.append(f"{pad(indent)}[page] {child.get('title') or child['id']}")
+                card = f"{pad(indent + 1)}[page] {child.get('title') or child['id']}"
+                child_description = child.get("description", "")
+                if child_description and child.get("description_visible", True) is True:
+                    card = f"{card}\n{pad(indent + 2)}{child_description}"
+                blocks.append(card)
+            elif child.get("type") == "note":
+                blocks.append(f"{pad(indent + 1)}[note] {child.get('title') or child['id']}")
             else:
-                lines.append(render_child(child_id, indent))
+                blocks.append(render_child(child_id, indent + 1))
 
-    return "\n".join(lines).rstrip()
+    return "\n\n".join(blocks).rstrip()

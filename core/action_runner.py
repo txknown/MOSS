@@ -27,5 +27,4 @@ class ActionRunner:
 
     def _timestamp(self):
         now = datetime.now().astimezone()
-        hour = now.strftime("%I").lstrip("0") or "12"
-        return f"{now.strftime('%B')} {now.day}, {now.year}, {hour}:{now.strftime('%M %p')}"
+        return f"{now.strftime('%B')} {now.day}, {now.year}, {now.strftime('%H:%M')}"

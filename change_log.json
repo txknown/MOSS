@@ -1,0 +1,14 @@
+[
+  {
+    "version": "v1.0.0",
+    "date": "2026-09-30",
+    "changes": [
+      "Establish MOSS v1 as the baseline for the reusable code, separate from personal workspace data.",
+      "Retain the file-backed node and action model, Python validation, terminal interface, browser renderers, and existing node types.",
+      "Add the MOSS Change log system page and read-only API, backed by release notes stored with the code rather than personal memory.",
+      "Stop terminal startup from recording the obsolete v0.2 core version in the memory action log.",
+      "Document release versioning: code changes receive release notes; commands and memory edits remain in the action log.",
+      "Hide randomizer titles on parent pages by default, with a Show title on parent page option. Keep selected text and the title on the direct node view."
+    ]
+  }
+]

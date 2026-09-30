@@ -8,6 +8,9 @@ def run(memory, payload, runner=None):
 
     parent_id = memory.clean_id(parent_id)
     child_id = memory.clean_id(child_id)
+    parent = memory.load_meta(parent_id)
+    if child_id not in parent.get("children", []):
+        raise ValueError(f"{child_id} is not linked to {parent_id}")
     memory.remove_child(parent_id, child_id)
     return {
         "parent_id": parent_id,

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'"
+    >
+    <title>MOSS</title>
+    <link rel="stylesheet" href="/static/styles.css?v=21">
+    <script src="/static/app.js?v=24" type="module"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="brand-group">
+        <a class="brand" href="/node/home" id="brand-home">MOSS</a>
+      </div>
+
+      <nav class="system-nav" aria-label="MOSS views">
+        <a href="/node/home" id="nav-home">Home</a>
+        <a href="/search" id="nav-search">Search</a>
+        <a href="/node-types" id="nav-node-types">Node types</a>
+        <a href="/action-types" id="nav-action-types">Action types</a>
+        <a href="/snapshots" id="nav-snapshots">Snapshots</a>
+        <a href="/tree" id="nav-tree">Memory map</a>
+        <a href="/action-log" id="nav-action-log">Action log</a>
+        <a href="/change-log" id="nav-change-log">MOSS Change log</a>
+      </nav>
+    </header>
+
+    <main class="main">
+      <div class="directory-context">
+        <span class="directory-label">Parent tree / directory</span>
+        <nav class="breadcrumbs" id="breadcrumbs" aria-label="Breadcrumb">
+          <span class="muted">Loading…</span>
+        </nav>
+      </div>
+      <section id="content" class="content" aria-live="polite">
+        <div class="loading-card">
+          <span class="loading-leaf" aria-hidden="true"></span>
+          Opening memory…
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
