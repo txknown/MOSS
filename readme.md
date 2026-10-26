@@ -1,26 +1,28 @@
 # MOSS
 
-**v1.0.0**
+**v1.1.0**
 
 MOSS is a local system for creating and connecting nodes: pages, notes, tasks,
-lists, and other content. You choose how to organize them, and you can extend
-the code with new node types, actions, and renderers.
+lists, schedules, and other content. You choose the structure, use the included
+node types, and extend the code when you need new behavior or ways to display it.
 
-For an organizational workspace, a project page might contain notes, a task
-list, a schedule, and reference links. You can create and edit these nodes in
-the browser using the included types, then add custom behavior when needed.
+An organizational workspace is one example. A project page can bring together
+notes, a task list, a calendar, and references. A scratchpad can collect rough
+ideas before you organize them. The same parts can support a reference library,
+a collection, or a workspace shaped around your own process.
 
 Python handles storage and validation; HTML, CSS, and JavaScript provide the
-web interface. Your data is stored in ordinary files on your computer. MOSS
-runs locally without a database, frontend build step, or MOSS account.
+web interface. Data lives in ordinary local files. MOSS runs without a database,
+frontend build step, or MOSS account. You can work directly in the interface or
+ask an agent with local file access to organize and extend it.
 
 ## Start the web interface
 
-You need Git and Python 3.10 or newer. This release has been tested with
-Python 3.14. The commands below use macOS or Linux; on macOS they also work in
-VS Code's integrated terminal.
+You need Git and Python 3.10 or newer. This release was tested on macOS with
+Python 3.14.7. The commands below work in a macOS or Linux terminal, including
+VS Code's integrated terminal. Windows command equivalents are below.
 
-Clone the repository and install its Python dependencies once:
+Clone the repository and install dependencies once:
 
 ```sh
 git clone https://github.com/txknown/MOSS.git
@@ -29,163 +31,202 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
 
-If you already have the repository, open a terminal in its folder and begin
-with the virtual environment step.
+If you already have the code, open a terminal in its folder and start with the
+virtual environment step. For an existing workspace, read the
+[upgrade instructions](docs/backup-and-upgrade.md#upgrade-from-v100) first.
 
-Launch MOSS:
+Launch:
 
 ```sh
 .venv/bin/python start_web.py
 ```
 
-Your browser opens at <http://127.0.0.1:8766/node/home>. On the first launch,
-MOSS creates a local `memory/` directory with an empty **Home** page.
+The browser opens at <http://127.0.0.1:8766/>. The first launch creates a local
+`memory/` directory containing only an empty **Home** page. The defaults are
+**MOSS light**, **Node** startup, and generic navigation links. There are no
+sample notes, personal shortcuts, or starter kits bundled with this release.
 
-Keep the terminal open while using MOSS. Press **Ctrl+C** in that terminal to
-stop the server. To use it again, run the same launch command; dependency
-installation is only needed during setup or when requirements change.
+Keep the terminal open while using MOSS. **Ctrl+C** stops the server. To return,
+run the launch command again; reinstall dependencies only when needed for an
+update. If the browser does not open automatically, visit the address above.
 
-If the browser does not open automatically, visit the address above. If the
-port is occupied, the launcher reports it and exits. The server listens on
-this computer's loopback address and is intended for local use.
+If port 8766 is occupied, the launcher exits without opening another workspace.
+Each installation uses its own data directory, regardless of the terminal's
+current folder. The server listens only on this computer's loopback address.
 
-## Use MOSS: build a workspace
+On Windows PowerShell, after cloning and entering the folder:
 
-On **Home**, open **Edit**, find **Create child**, choose a node type, and click
-**Create**. Open a node's editor to change its content or attributes. Pages can
-also link existing nodes and change their order.
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe start_web.py
+```
 
-For example, create a page for a project, add a note for its purpose, a to-do
-list for next steps, and links to useful resources. Add more pages or node
-types as the project grows. Creating and connecting these nodes does not
-require changing the code.
+The Windows commands are provided for convenience; this release's interactive
+verification was performed on macOS.
 
-Available node types include:
+## Build your first workspace
 
-- **Pages, notes, and text** for projects, writing, and reference material.
-- **To-do lists and items** for tasks and nested checklists.
-- **Calendars, weeks, and events** for schedules.
-- **Item lists and items** for collections with shared fields.
-- **Logs and log entries** for reusable prompts and recorded answers.
-- **Images, links, and internal links** for local materials and references.
-- **Randomizers** for selections from a list of phrases or prompts.
+1. On **Home**, expand **Edit**, find **Create child**, choose **Page**, give it
+   a title such as “Projects,” and click **Create**.
+2. Open that page and create a **Note** for some writing or a **Todo List** for
+   next steps. Nodes can also link existing children and reorder them.
+3. Add a **Scratchpad** to Home for quick jots. Its parent preview contains a
+   composer; opening the scratchpad shows previous jots, newest first.
+4. Use **Search** to find content and **Memory map** to inspect relationships.
+   A node's **Node attributes** section includes its ID for linking elsewhere.
 
-Randomizers show their selected text without a heading on parent pages by
-default. Enable **Show title on parent page** in the randomizer's editor to
-show its heading. The title remains visible when opening the node itself.
+These are suggestions, not a required folder structure. One node can be linked
+from multiple parents. Unlinking it removes that relationship; deleting it
+removes the node itself and its incoming references. Child nodes are retained
+when a parent is deleted. Scratchpad trash buttons permanently delete the
+confirmed text jot, including when it is linked elsewhere. Take a snapshot
+before changes you may want to undo.
 
-The navigation includes **Search**, **Memory map**, and reference pages for
-**Node types** and **Action types**. **Snapshots** creates and downloads ZIP
-backups of your memory and version information.
+The included node types are:
+
+| Types | Purpose |
+| --- | --- |
+| Page, Note, Text | Structure, titled writing, and inline text. |
+| Scratchpad | Quick jots stored as ordinary Text children. |
+| Todo List, Todo Item | Tasks and nested checklists, with new tasks first. |
+| Calendar, Week, Event | Weekly schedules, timed events, and untimed day items. |
+| Item List, Item | Collections whose entries share named fields. |
+| Log, Log Entry | Reusable prompts and answers, including date, text, choices, and checkboxes. |
+| Image, Link, Internal Link | Local images, web references, nodes, and built-in system views. |
+| Randomizer | Random selections from lines of text. |
+
+**Calendars:** create a Week with a Monday start date, open it, and use **Add
+item**. Select **Timed event** or **Day item (no time)**. Untimed items appear
+above the day's schedule. Timed events occupy proportional positions on a fixed
+24-hour grid, with compressed overnight hours and overlapping boxes when times
+overlap. Weeks also have a **Notes & goals** section. Date entry uses
+`YYYY-MM-DD`; week cards show abbreviated months and the year.
+
+**Logs:** configure prompts in the log's editor. Checkbox prompts provide
+Yes/No answers. Each entry keeps its own prompt snapshot, so editing a template
+does not reinterpret older entries.
+
+**Randomizers:** selections link to the node. The heading is hidden in parent
+previews by default; **Show title on parent page** enables it.
+
+**Images:** place the image file in `memory/materials/` and use a source such as
+`materials/example.png`. Image paths outside that directory are not served.
+Node text is plain text; HTML and Markdown are not executed or rendered as markup.
+
+## Appearance and navigation
+
+![MOSS top-down navigation in the optional dark scheme](docs/images/top-down-dark.png)
+
+The optional top-down view in MOSS dark. New installations start at Home in MOSS light.
+
+Open **MOSS UI** in the top bar to choose:
+
+- A saved **MOSS light** or **MOSS dark** color scheme.
+- **Node** startup, using the configured home node ID, or **Show top-down**.
+- Top-bar links to **Home**, an existing **Node** by ID, or a built-in view such
+  as Search or Memory map. Set their labels, reorder them, and remove links.
+
+Click **Save UI settings** to apply changes. **MOSS UI** stays available as a
+fixed link. **Home** follows the configured home node. Clicking the **MOSS**
+brand opens the top-down view, which uses the same navigation list. It shows a
+circle at ordinary desktop sizes and a grid on small screens or with many links.
+Selecting a destination opens its usual interface. Direct node URLs always open
+that node, regardless of the startup preference.
+
+A node's **Edit → Display styles** section has separate selectors for **On a
+parent page** and **When opened**. All start at **Default**. Calendar also offers
+**Current week** in parent previews: it displays existing week nodes containing
+today, including their events and day items. It uses the browser's local date
+and never creates a missing week. The normal opened-calendar view is unchanged.
+
+MOSS UI includes an expandable catalog of display styles by node type. Ask an
+AI2 agent to add a reusable style or saved color scheme when you need one; this
+release does not include a visual style builder. Removed or incompatible display
+styles fall back to Default. A node uses the same parent style wherever it appears.
+
+Presentation choices live outside node content. See the
+[architecture and extension guide](docs/architecture.md).
 
 ## Launch from any folder with zsh
 
-For an optional `moss-web` command, add this function to `~/.zshrc`. Replace
-`/absolute/path/to/MOSS` with the full path to your repository; run `pwd` in
-its folder to find that path.
+For an optional `moss-web` command, add this function to `~/.zshrc`. Replace the
+path with the absolute path to this installation; `pwd` prints it when you are
+in the repository folder.
 
 ```zsh
 moss-web() {
   local moss_dir="/absolute/path/to/MOSS"
-  "$moss_dir/.venv/bin/python" "$moss_dir/start_web.py" "$@"
+  "$moss_dir/.venv/bin/python" "$moss_dir/start_web.py"
 }
 ```
 
-Load the function in your current terminal, then launch:
+Load it in the current terminal, then launch:
 
 ```zsh
 source ~/.zshrc
 moss-web
 ```
 
-New zsh terminals load the function automatically. It uses the project's own
-Python environment and works from any folder. If you move the repository,
-update the path in the function.
+New zsh terminals load the function automatically. If you move the installation,
+update the path. Stop it with **Ctrl+C** in the terminal that launched it.
 
-## Your data
-
-Each installation stores its workspace beside the source code:
+## Your data and backups
 
 ```text
 memory/
-  nodes/       Node metadata and text content
+  nodes/       Node metadata and plain-text content
   materials/   Local images and other referenced files
-  system/      Settings, counters, and the node registry
+  system/      Registry, counters, and workspace presentation settings
   logs/        Recorded actions
 snapshots/     ZIP backups created through MOSS
 ```
 
-The repository starts without personal workspace data. Launching MOSS again
-uses the existing memory; it does not reset your workspace. Data paths are
-relative to the installation, regardless of the terminal's current folder.
+The repository contains no workspace data. Later launches reuse existing memory;
+they do not reset it. Data is stored as ordinary unencrypted local files.
+
+**Snapshots** creates and downloads ZIP backups of memory and its version
+information. Snapshots do not contain the application source code. See
+[backup, recovery, and upgrading](docs/backup-and-upgrade.md) for exact steps.
 
 `memory/`, `snapshots/`, virtual environments, and caches are excluded by
-`.gitignore`. Keep those exclusions when sharing code. A manual folder copy
-or ZIP does not apply Git's ignore rules, so choose explicitly whether to
-include your workspace data. Snapshots contain your data too.
+`.gitignore`. A manual folder copy or ZIP does not apply Git ignore rules.
+Keep workspace data and backups private when sharing the source code.
 
 ## Two kinds of history
 
-**Action log** records commands and memory changes made through MOSS, such as
-creating a node, editing content, or moving a child.
+**Action log** records changes made through MOSS actions: creating nodes,
+editing content, changing display settings, and other workspace operations.
 
-**MOSS Change log** displays code releases from `change_log.json`. The initial
-release is **v1.0.0**. Small code updates increment the patch version, for
-example `v1.0.1`; adding notes or completing tasks does not change the code
-version. Release entries are maintained alongside code changes, and
-`version.txt` identifies the current release.
+**MOSS version log** displays code releases from `change_log.json`. This release
+is **v1.1.0**; `version.txt` identifies the installed version. Code changes get
+release notes. Adding notes or checking off tasks does not change the code version.
 
-## Build MOSS: extend the system
+## Agents and extensions
 
-MOSS is intended to grow through small, understandable additions. You can
-introduce a new kind of node, add an action, or change how a node is rendered
-while keeping the underlying file-based model.
+Read [the agent guide](docs/agents.md) to connect an agent with local file and
+Python access. It includes a read-only inspection example, explicit action
+examples, and guidance for organizing notes without losing original wording.
+MOSS does not bundle an AI model or run an agent in the background.
 
-- **Nodes** hold content and references to other nodes.
-- **Actions** validate and save changes to memory.
-- **Renderers** display nodes in the browser or terminal.
-
-```text
-core/           Storage, schemas, validation, and the terminal app
-action_types/   Operations on nodes and relationships
-node_types/     Node-specific terminal renderers
-web/            Python web server and HTML/CSS/JavaScript interface
-tools/          Plain-text to-do importer
-tests/          Tests using temporary, synthetic workspaces
-```
-
-Node rules live in `core/node_schema.py`. Durable changes pass through
-`ActionRunner`; web reads do not modify or migrate memory.
-
-For a new node type, start with its purpose and the smallest set of fields it
-needs. A reading collection, for example, can already use an item list with
-shared fields. A dedicated book node becomes useful when it needs its own
-behavior or presentation.
-
-When extending the code:
-
-1. Define the node's fields, defaults, validation, and child rules in
-   `core/node_schema.py`. The browser's general editors use that schema.
-2. Add its terminal renderer in `node_types/` and its browser presentation in
-   `web/static/renderers/`, connecting the browser renderer in `web/static/app.js`.
-3. If it needs a new operation, implement it in `action_types/`, register it in
-   `core/action_catalog.py`, and explicitly allow browser access where needed.
-4. Test with temporary data and keep existing saved nodes compatible.
-5. Describe the code change in `change_log.json` and update `version.txt` for
-   the release.
-
-Keep domain rules in Python and presentation in the renderers. See
-[AGENTS.md](AGENTS.md) for the architecture constraints used when extending MOSS.
+Nodes, actions, and display styles can be extended independently. Domain rules
+live in Python; browser modules own rendering. The
+[architecture guide](docs/architecture.md) explains the six parts of MOSS and
+where to add each kind of extension. [AGENTS.md](AGENTS.md) records the repository
+constraints for agents making code changes.
 
 ## Terminal interface
 
-A terminal interface is also available:
+A terminal interface shares the same local memory:
 
 ```sh
 .venv/bin/python start_moss.py
 ```
 
-It uses the same local memory as the web interface.
+Type `help` for commands. The browser provides the full presentation-settings
+and specialized editing interfaces; browser display styles do not alter terminal
+rendering. Use one writer at a time: concurrent agents or separate terminal/web
+processes do not share a cross-process write lock.
 
 ## Development checks
 
@@ -195,12 +236,13 @@ From the repository folder:
 .venv/bin/python -B -m unittest discover -s tests -v
 ```
 
-Tests use temporary data rather than your workspace. Node.js is optional for
-running MOSS, but enables the JavaScript syntax and renderer checks in the
-test suite; those checks are skipped when Node.js is unavailable.
+Tests use temporary synthetic workspaces. Node.js is not needed to run MOSS.
+Install Node.js 22.7 or newer to include JavaScript syntax and renderer tests;
+those checks are skipped if Node.js is unavailable. Release verification used
+Node.js 24.19.0. `requirements.txt` records the tested direct Python dependencies.
 
 ## License
 
 MOSS is free to use, modify, and share under the [MOSS Free Use License](LICENSE).
-The license also includes the project's mission request concerning **MOSS**,
-**AI2**, and **186**.
+The license includes the project's mission request concerning **MOSS**, **AI2**,
+and **186**.

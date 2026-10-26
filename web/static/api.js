@@ -1,6 +1,6 @@
 "use strict";
 
-export const REQUIRED_API_VERSION = 14;
+export const REQUIRED_API_VERSION = 15;
 
 export async function apiJson(url, options = {}) {
   const method = options.method || "GET";
@@ -37,13 +37,13 @@ export async function loadSchema() {
     Number(health.api_version || 0) < REQUIRED_API_VERSION
   ) {
     throw new Error(
-      "The MOSS web server is out of date. Stop the running server with Ctrl+C, then run python start_web.py again.",
+      "The MOSS web server is out of date. Stop the running server with Ctrl+C, then run moss-web again.",
     );
   }
   const schema = await apiJson("/api/schema");
   if (!schema || schema.schema_version !== 1 || !schema.node_types) {
     throw new Error(
-      "The MOSS web server returned an incompatible node schema. Restart python start_web.py and try again.",
+      "The MOSS web server returned an incompatible node schema. Restart moss-web and try again.",
     );
   }
   return schema.node_types;

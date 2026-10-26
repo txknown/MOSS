@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from copy import deepcopy
 from typing import Any
+from core.system_views import SYSTEM_TARGETS
 
 
 Choice = tuple[str, str]
@@ -59,6 +60,7 @@ class NodeSchema:
     content: ContentSchema | None = None
     allowed_child_types: tuple[str, ...] = ()
     child_creation_types: tuple[str, ...] | None = None
+    child_insert_position: str = "bottom"
     manages_children: bool = False
     relationship_editable: bool = True
     navigation: bool = False
@@ -106,6 +108,26 @@ TITLE = _attribute(
     max_length=160,
     editor=EditorSpec("Title"),
 )
+DESCRIPTION_ATTRIBUTES = (
+    _attribute(
+        "description",
+        "string",
+        default="",
+        has_default=True,
+        top_level_only=True,
+        max_length=10_000,
+        editor=EditorSpec("Description", input_type="textarea", rows=4),
+    ),
+    _attribute(
+        "description_visible",
+        "boolean",
+        default=True,
+        has_default=True,
+        top_level_only=True,
+        editor=EditorSpec("Show description", input_type="checkbox"),
+    ),
+)
+
 TEXT_PRESENTATION = (
     _attribute(
         "size",
@@ -165,26 +187,11 @@ NODE_SCHEMAS: dict[str, NodeSchema] = {
         description="A home for related nodes, with an optional description. Use pages to organize projects, topics, or areas of life.",
         attributes=(
             TITLE,
-            _attribute(
-                "description",
-                "string",
-                default="",
-                has_default=True,
-                top_level_only=True,
-                max_length=10_000,
-                editor=EditorSpec("Description", input_type="textarea", rows=4),
-            ),
-            _attribute(
-                "description_visible",
-                "boolean",
-                default=True,
-                has_default=True,
-                top_level_only=True,
-                editor=EditorSpec("Show description", input_type="checkbox"),
-            ),
+            *DESCRIPTION_ATTRIBUTES,
         ),
         allowed_child_types=(
             "page",
+            "scratchpad",
             "text",
             "note",
             "item_list",
@@ -258,8 +265,9 @@ NODE_SCHEMAS: dict[str, NodeSchema] = {
     "todo_list": NodeSchema(
         name="todo_list",
         description="A collection of tasks you can check off, useful for project work, errands, or a wishlist.",
-        attributes=(TITLE,),
+        attributes=(TITLE, *DESCRIPTION_ATTRIBUTES),
         allowed_child_types=("todo_item",),
+        child_insert_position="top",
         manages_children=True,
         navigation=True,
         expand_children=True,
@@ -287,6 +295,7 @@ NODE_SCHEMAS: dict[str, NodeSchema] = {
         ),
         content=ContentSchema(),
         allowed_child_types=("todo_item",),
+        child_insert_position="top",
         manages_children=True,
         expand_children=True,
     ),
@@ -372,7 +381,7 @@ NODE_SCHEMAS: dict[str, NodeSchema] = {
     ),
     "week": NodeSchema(
         name="week",
-        description="A schedule running from Monday through Sunday. Holds events and can be marked complete to move it into past weeks.",
+        description="A schedule running from Monday through Sunday. Holds events and notes/goals, and can be marked complete to move it into past weeks.",
         attributes=(
             _attribute(
                 "title",
@@ -389,6 +398,14 @@ NODE_SCHEMAS: dict[str, NodeSchema] = {
                 default="",
                 has_default=True,
                 editor=EditorSpec("Monday", input_type="date", required=True),
+            ),
+            _attribute(
+                "notes",
+                "string",
+                default="",
+                has_default=True,
+                max_length=10_000,
+                editor=EditorSpec("Notes & goals", input_type="textarea", rows=5),
             ),
             _attribute(
                 "completed",
@@ -526,7 +543,7 @@ NODE_SCHEMAS: dict[str, NodeSchema] = {
     ),
     "internal_link": NodeSchema(
         name="internal_link",
-        description="A shortcut to another node in MOSS, leaving it in its original place. If the target goes missing, the shortcut stays visible as broken.",
+        description="A shortcut to another node or a built-in browser view. Keeps the original node in place; missing node targets stay visible as broken references.",
         attributes=(
             _attribute(
                 "title",
@@ -538,20 +555,32 @@ NODE_SCHEMAS: dict[str, NodeSchema] = {
             ),
             _attribute(
                 "target_id",
-                "node_id",
+                "internal_target",
                 required=True,
                 max_length=160,
                 editor=EditorSpec(
-                    "Target node ID",
+                    "Target node or system view",
                     placeholder="actions_i_desire",
                     required=True,
-                    pattern="[a-z0-9]+(?:_[a-z0-9]+)*",
-                    title="Use a lowercase MOSS node ID",
+                    pattern="(?:[a-z0-9]+(?:_[a-z0-9]+)*|" + "|".join(SYSTEM_TARGETS) + ")",
+                    title="Use a MOSS node ID or choose a built-in system view",
+                    suggestions=tuple((key, value[0]) for key, value in SYSTEM_TARGETS.items()),
                 ),
             ),
         ),
     ),
 }
+
+
+NODE_SCHEMAS["scratchpad"] = NodeSchema(
+    name="scratchpad",
+    description="A quick text composer with individual text-node jots. Open it to review, edit, or remove earlier jots.",
+    attributes=NODE_SCHEMAS["page"].attributes,
+    allowed_child_types=("text",),
+    manages_children=True,
+    navigation=True,
+    expand_children=True,
+)
 
 
 def node_type_names() -> tuple[str, ...]:
@@ -578,6 +607,8 @@ def validate_node_schemas() -> None:
     for node_type, schema in NODE_SCHEMAS.items():
         if schema.name != node_type:
             raise ValueError(f"Schema key {node_type} does not match name {schema.name}.")
+        if schema.child_insert_position not in {"top", "bottom"}:
+            raise ValueError(f"Schema {node_type} has an invalid child insertion position.")
         names = [item.name for item in schema.attributes]
         if len(names) != len(set(names)):
             raise ValueError(f"Schema {node_type} contains duplicate attributes.")
@@ -697,6 +728,7 @@ def public_schema() -> dict[str, Any]:
             "attributes": attributes,
             "allowed_child_types": list(schema.allowed_child_types),
             "child_creation_types": list(schema.generic_child_types()),
+            "child_insert_position": schema.child_insert_position,
             "manages_children": schema.manages_children,
             "relationship_editable": schema.relationship_editable,
         }

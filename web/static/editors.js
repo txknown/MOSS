@@ -1,7 +1,7 @@
 "use strict";
 
-import { runMossAction } from "./api.js?v=24";
-import { createElement, humanLabel } from "./dom.js?v=24";
+import { runMossAction } from "./api.js?v=35";
+import { createElement, humanLabel, configureDateInput } from "./dom.js?v=35";
 
 
 function nodeFieldValue(node, field) {
@@ -64,6 +64,7 @@ function makeAttributeEditorField(node, attribute, initialValue) {
     }
   }
   applyEditorProperties(control, editor);
+  if (editor.input_type === "date") configureDateInput(control);
 
   control.name = attribute.name;
   control.dataset.attribute = attribute.name;
@@ -111,7 +112,7 @@ function readCreateAttributes(container) {
   return attributes;
 }
 
-export function createEditors({ deleteCurrentNode, nodeSchemas, refreshCurrentNode, showActionNotice }) {
+export function createEditors({ deleteCurrentNode, nodeSchemas, refreshCurrentNode, showActionNotice, makeDisplayEditor }) {
   function makeCreateChildForm(node) {
     const allowedTypes = nodeSchemas[node.type]?.child_creation_types || [];
     if (!allowedTypes.length) return null;
@@ -420,6 +421,7 @@ export function createEditors({ deleteCurrentNode, nodeSchemas, refreshCurrentNo
       body.append(form);
     }
 
+    if (makeDisplayEditor) body.append(makeDisplayEditor(node));
     if (relationshipEditor) body.append(relationshipEditor);
     if (deleteNodeSection) body.append(deleteNodeSection);
     details.append(summary, body);

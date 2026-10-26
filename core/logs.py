@@ -7,7 +7,7 @@ from datetime import date
 from typing import Any
 
 
-LOG_PROMPT_TYPES = ("text", "date", "choice")
+LOG_PROMPT_TYPES = ("text", "date", "choice", "checkbox")
 MAX_LOG_PROMPTS = 40
 MAX_PROMPT_LABEL_LENGTH = 120
 MAX_TEXT_ANSWER_LENGTH = 250_000
@@ -92,7 +92,7 @@ def validate_log_answers(
     answers_value: Any,
     *,
     require_required: bool = True,
-) -> dict[str, str | int]:
+) -> dict[str, str | int | bool]:
     """Validate answers against the exact prompt snapshot used for an entry."""
     prompts = validate_log_prompts(prompts_value)
     if not isinstance(answers_value, dict):
@@ -102,13 +102,18 @@ def validate_log_answers(
     if unknown:
         raise ValueError(f"answers contain unknown prompts: {', '.join(unknown)}")
 
-    answers: dict[str, str | int] = {}
+    answers: dict[str, str | int | bool] = {}
     for prompt in prompts:
         prompt_id = prompt["id"]
         value = answers_value.get(prompt_id, "")
         if value is None:
             value = ""
-        if prompt["type"] == "choice":
+        if prompt["type"] == "checkbox":
+            if prompt_id not in answers_value and not (require_required and prompt["required"]):
+                value = False
+            if not isinstance(value, bool):
+                raise ValueError(f"{prompt['label']} must be true or false")
+        elif prompt["type"] == "choice":
             if value == "" and not prompt["required"]:
                 answers[prompt_id] = ""
                 continue
@@ -153,15 +158,17 @@ def safe_log_prompts(value: Any) -> list[dict[str, Any]]:
         return []
 
 
-def safe_log_answers(prompts_value: Any, answers_value: Any) -> dict[str, str | int]:
+def safe_log_answers(prompts_value: Any, answers_value: Any) -> dict[str, str | int | bool]:
     """Return only harmless scalar answers for read rendering; never repair data."""
     prompts = safe_log_prompts(prompts_value)
     if not prompts or not isinstance(answers_value, dict):
         return {}
-    answers: dict[str, str | int] = {}
+    answers: dict[str, str | int | bool] = {}
     for prompt in prompts:
         value = answers_value.get(prompt["id"], "")
-        if isinstance(value, bool) or not isinstance(value, (str, int)):
+        if prompt["type"] == "checkbox":
+            value = value if isinstance(value, bool) else ""
+        elif isinstance(value, bool) or not isinstance(value, (str, int)):
             value = ""
         answers[prompt["id"]] = value
     return answers

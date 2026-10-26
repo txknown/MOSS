@@ -27,6 +27,9 @@ def render(memory, meta, indent=0, render_child=None):
                 lines.append(render_child(child_id, indent + 1))
     if len(lines) == 1:
         lines.append(f"{pad(indent + 1)}(no events)")
+    if meta.get("notes"):
+        lines.append(f"{pad(indent + 1)}Notes & goals:")
+        lines.extend(f"{pad(indent + 1)}{line}" for line in meta["notes"].splitlines())
     return "\n".join(lines)
 
 
@@ -36,6 +39,4 @@ def _date_range(value):
     except ValueError:
         return ""
     end = start + timedelta(days=6)
-    if start.year == end.year:
-        return f"Week of {start.strftime('%b')} {start.day} – {end.strftime('%b')} {end.day}, {end.year}"
-    return f"Week of {start.strftime('%b')} {start.day}, {start.year} – {end.strftime('%b')} {end.day}, {end.year}"
+    return f"Week of {start.isoformat()} – {end.isoformat()}"

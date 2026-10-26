@@ -29,6 +29,113 @@ class NodeSchemaArchitectureTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
+    def test_new_todos_prepend_without_reordering_existing_children(self):
+        for parent_type in ("todo_list", "todo_item"):
+            parent_id = f"ordered_{parent_type}"
+            self.actions.run("create_node", {"type": parent_type, "id": parent_id})
+            original = []
+            for suffix in ("first", "done", "last"):
+                child_id = f"{parent_id}_{suffix}"
+                self.actions.run("create_node", {"type": "todo_item", "id": child_id})
+                self.memory.add_child(parent_id, child_id)
+                original.append(child_id)
+            self.actions.run("update_node", {
+                "node_id": original[1], "attributes": {"checked": True},
+            })
+            original = list(self.memory.load_meta(parent_id)["children"])
+            original_bytes = {p: p.read_bytes() for id in original for p in self.memory.node_path(id).iterdir()}
+            log_before = self.actions.action_log_path.read_text().splitlines()
+            result = self.actions.run("create_child", {
+                "parent_id": parent_id, "type": "todo_item", "content": "Newest task",
+            })
+            self.assertEqual(self.memory.load_meta(parent_id)["children"], [result["node_id"], *original])
+            self.assertEqual(len(self.actions.action_log_path.read_text().splitlines()), len(log_before) + 1)
+            self.assertEqual(original_bytes, {p: p.read_bytes() for p in original_bytes})
+            before = {p: p.read_bytes() for p in self.memory.root.rglob("*") if p.is_file()}
+            node = ReadService(self.root).get_node(parent_id)
+            self.assertEqual([child["id"] for child in node["child_nodes"]], [result["node_id"], *original])
+            self.assertEqual(before, {p: p.read_bytes() for p in self.memory.root.rglob("*") if p.is_file()})
+
+        # Ordinary page children keep their append behavior.
+        for id in ("first_note", "second_note"):
+            self.actions.run("create_child", {"parent_id": "home", "type": "note", "id": id})
+        self.assertEqual(self.memory.load_meta("home")["children"], ["first_note", "second_note"])
+
+    def test_todo_and_calendar_composer_rendering(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node.js is not installed")
+        subprocess.run([node, str(Path(__file__).with_name("test_composers.mjs"))], check=True, capture_output=True)
+
+    def test_week_notes_and_todo_descriptions_round_trip_without_mutating_reads(self):
+        self.actions.run("create_node", {"type": "week", "id": "week_notes"})
+        self.actions.run("create_node", {"type": "todo_list", "id": "described_todos"})
+        before = {p: p.read_bytes() for p in self.memory.root.rglob("*") if p.is_file()}
+        service = ReadService(self.root)
+        self.assertEqual(service.get_node("week_notes")["attributes"]["notes"], "")
+        todo = service.get_node("described_todos")
+        self.assertEqual(todo["description"], "")
+        self.assertTrue(todo["description_visible"])
+        self.assertEqual(before, {p: p.read_bytes() for p in self.memory.root.rglob("*") if p.is_file()})
+
+        notes = "First goal\nA second thought <keep literal>"
+        self.actions.run("update_node", {"node_id": "week_notes", "attributes": {"notes": notes}})
+        self.actions.run("update_node", {"node_id": "described_todos", "attributes": {
+            "description": "Tasks for this project", "description_visible": False,
+        }})
+        before = {p: p.read_bytes() for p in self.memory.root.rglob("*") if p.is_file()}
+        self.assertEqual(service.get_node("week_notes")["attributes"]["notes"], notes)
+        todo = service.get_node("described_todos")
+        self.assertEqual(todo["description"], "Tasks for this project")
+        self.assertFalse(todo["description_visible"])
+        self.assertEqual(before, {p: p.read_bytes() for p in self.memory.root.rglob("*") if p.is_file()})
+        rendered = load_node_type("week").render(self.memory, self.memory.load_meta("week_notes"))
+        for line in notes.splitlines():
+            self.assertIn(line, rendered)
+        for node_id, field in [("week_notes", "notes"), ("described_todos", "description")]:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.actions.run("update_node", {"node_id": node_id, "attributes": {field: "x" * 10001}})
+        self.actions.run("update_node", {"node_id": "week_notes", "attributes": {"notes": ""}})
+        self.assertEqual(service.get_node("week_notes")["attributes"]["notes"], "")
+
+    def test_stale_ui_settings_fall_back_without_repairing_files(self):
+        from core.ui_settings import read_settings, DEFAULTS
+        path = self.memory.system / "ui_settings.json"
+        path.write_text('{"scheme":"gone", "home_style":"bad", "home_node_id":"missing"}')
+        before = path.read_bytes()
+        self.assertEqual(read_settings(self.memory), DEFAULTS)
+        self.assertEqual(path.read_bytes(), before)
+        path.write_text("broken json")
+        self.assertEqual(read_settings(self.memory), DEFAULTS)
+        self.assertEqual(path.read_text(), "broken json")
+
+    def test_internal_system_targets_validate_and_project_without_mutating_reads(self):
+        from core.system_views import SYSTEM_TARGETS
+        from core.node_validation import validate_attribute_value
+
+        for number, (target_id, (title, url)) in enumerate(SYSTEM_TARGETS.items()):
+            result = self.actions.run("create_child", {
+                "parent_id": "home", "type": "internal_link", "id": f"system_jump_{number}",
+                "attributes": {"title": title, "target_id": target_id},
+            })
+            before = {p: p.read_bytes() for p in self.memory.root.rglob("*") if p.is_file()}
+            node = ReadService(self.root).get_node(result["node_id"])
+            self.assertEqual(node["internal_target"], {
+                "id": target_id, "type": "system", "title": title, "url": url,
+            })
+            self.assertEqual(before, {p: p.read_bytes() for p in self.memory.root.rglob("*") if p.is_file()})
+        for value in ["system:unknown", "system:../tree", "//example.com", "javascript:alert(1)"]:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_attribute_value("target_id", value, "internal_target")
+        self.assertEqual(validate_attribute_value("target_id", "my_note", "internal_target"), "my_note")
+        self.actions.run("create_node", {"type": "note", "id": "absent_note"})
+        broken = self.actions.run("create_child", {
+            "parent_id": "home", "type": "internal_link", "id": "still_broken",
+            "attributes": {"title": "Missing", "target_id": "absent_note"},
+        })
+        self.actions.run("trash_node", {"node_id": "absent_note"})
+        self.assertIsNone(ReadService(self.root).get_node(broken["node_id"])["internal_target"])
+
     def test_every_registered_node_has_one_valid_schema_contract(self):
         validate_node_schemas()
         self.assertEqual(tuple(known_node_types()), tuple(NODE_SCHEMAS))
@@ -191,7 +298,7 @@ class NodeSchemaArchitectureTests(unittest.TestCase):
         internal_attributes = {
             item["name"]: item for item in internal_link["attributes"]
         }
-        self.assertEqual(internal_attributes["target_id"]["type"], "node_id")
+        self.assertEqual(internal_attributes["target_id"]["type"], "internal_target")
         self.assertTrue(internal_attributes["target_id"]["required"])
         self.assertIn("item_list", payload["node_types"]["page"]["allowed_child_types"])
         self.assertIn(
@@ -336,6 +443,18 @@ class NodeSchemaArchitectureTests(unittest.TestCase):
                 {"node_id": "readable_note", "new_id": "parent"},
                 log=False,
             )
+
+    def test_calendar_timing_and_date_rendering(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node.js is not installed")
+        subprocess.run([node, "--test", str(Path(__file__).with_name("calendar_layout.test.js"))], check=True, capture_output=True)
+
+    def test_calendar_preview_limits_only_embedded_views(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node.js is not installed")
+        subprocess.run([node, str(Path(__file__).with_name("test_calendar_preview.mjs"))], check=True, capture_output=True)
 
     def test_randomizer_browser_rendering(self):
         node = shutil.which("node")

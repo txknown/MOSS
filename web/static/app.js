@@ -1,6 +1,10 @@
 "use strict";
+import { createDisplayStyles } from "./display_styles.js?v=35";
+import { createUIViews } from "./ui.js?v=35";
+import { createScratchpadRenderers } from "./renderers/scratchpad.js?v=35";
+import { formatTimestamp } from "./dates.js?v=35";
 
-import { apiJson, loadSchema } from "./api.js?v=24";
+import { apiJson, loadSchema } from "./api.js?v=35";
 import {
   appendLabeledText,
   appendText,
@@ -10,31 +14,24 @@ import {
   makeLabeledSection,
   shortExcerpt,
   textDisplayTitle,
-} from "./dom.js?v=24";
-import { createEditors } from "./editors.js?v=24";
-import { createCalendarRenderers, formatWeekRange, parseDateOnly } from "./renderers/calendar.js?v=24";
-import { createContentRenderers } from "./renderers/content.js?v=24";
-import { createMaterialRenderers } from "./renderers/materials.js?v=24";
-import { createItemRenderers } from "./renderers/items.js?v=24";
-import { createLogRenderers } from "./renderers/logs.js?v=24";
-import { createSchemaView } from "./renderers/schema.js?v=24";
-import { createSnapshotView } from "./renderers/snapshots.js?v=24";
-import { createSystemViews } from "./renderers/system.js?v=24";
-import { createTodoRenderers } from "./renderers/todos.js?v=24";
+} from "./dom.js?v=35";
+import { createEditors } from "./editors.js?v=35";
+import { createCalendarRenderers, formatWeekRange, parseDateOnly } from "./renderers/calendar.js?v=35";
+import { createContentRenderers } from "./renderers/content.js?v=35";
+import { createMaterialRenderers } from "./renderers/materials.js?v=35";
+import { createItemRenderers } from "./renderers/items.js?v=35";
+import { createLogRenderers } from "./renderers/logs.js?v=35";
+import { createSchemaView } from "./renderers/schema.js?v=35";
+import { createSnapshotView } from "./renderers/snapshots.js?v=35";
+import { createSystemViews } from "./renderers/system.js?v=35";
+import { createTodoRenderers } from "./renderers/todos.js?v=35";
 
 
 const elements = {
   brandHome: document.querySelector("#brand-home"),
   breadcrumbs: document.querySelector("#breadcrumbs"),
   content: document.querySelector("#content"),
-  navHome: document.querySelector("#nav-home"),
-  navActionTypes: document.querySelector("#nav-action-types"),
-  navNodeTypes: document.querySelector("#nav-node-types"),
-  navSearch: document.querySelector("#nav-search"),
-  navSnapshots: document.querySelector("#nav-snapshots"),
-  navTree: document.querySelector("#nav-tree"),
-  navActionLog: document.querySelector("#nav-action-log"),
-  navChangeLog: document.querySelector("#nav-change-log"),
+
 };
 
 const viewState = {
@@ -43,6 +40,8 @@ const viewState = {
   tree: null,
 };
 
+let uiViews;
+let displayStyles;
 let makeNodeEditor;
 let makeEventCard;
 let makeTodoComposer;
@@ -53,6 +52,7 @@ let navigateSearch;
 let navigateSnapshots;
 let performSearch;
 let renderCalendar;
+let renderCurrentWeek;
 let renderEventDetail;
 let renderFallback;
 let renderImage;
@@ -67,6 +67,8 @@ let renderRandomizer;
 let renderTodoItem;
 let renderTodoList;
 let renderWeek;
+let renderScratchpad;
+let renderText;
 
 
 function crumbFor(node) {
@@ -160,17 +162,11 @@ function renderBreadcrumbs(path, currentLabel) {
 }
 
 function setShellActive(view) {
-  for (const [name, link] of [
-    ["home", elements.navHome],
-    ["action-types", elements.navActionTypes],
-    ["node-types", elements.navNodeTypes],
-    ["search", elements.navSearch],
-    ["snapshots", elements.navSnapshots],
-    ["tree", elements.navTree],
-    ["action-log", elements.navActionLog],
-    ["change-log", elements.navChangeLog],
-  ]) {
-    if (name === view) link.setAttribute("aria-current", "page");
+  document.body.classList.toggle("is-top-down", view === "top-down");
+  viewState.activeView = view;
+  for (const link of document.querySelectorAll(".system-nav a")) {
+    const active = view === "node" ? link.dataset.nodeId === viewState.currentNode?.id : link.dataset.view === view;
+    if (active) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
 }
@@ -210,11 +206,12 @@ function makeNodeMetadata(node) {
   appendReferenceMetadata(list, "Child references", node.children);
   const shown = new Set(["description_visible"]);
   for (const [name, value] of Object.entries(node.attributes || {})) {
-    if (!shown.has(name)) appendMetadataItem(list, humanLabel(name), value);
+    if (!shown.has(name)) appendMetadataItem(list, humanLabel(name),
+      ["created", "updated", "date_completed", "submitted_at"].includes(name) ? formatTimestamp(value) : value);
   }
   if (node.type === "todo_item") {
     appendMetadataItem(list, "Checked", node.checked);
-    appendMetadataItem(list, "Date completed", node.date_completed);
+    appendMetadataItem(list, "Date completed", formatTimestamp(node.date_completed));
   }
   if (node.type === "week") appendMetadataItem(list, "Completed", node.completed);
   if (node.type === "randomizer") appendMetadataItem(list, "Selection count", node.count);
@@ -225,7 +222,7 @@ function makeNodeMetadata(node) {
   if (node.type === "log_entry") {
     appendMetadataItem(list, "Log", node.log_id);
     appendMetadataItem(list, "Entry date", node.entry_date);
-    appendMetadataItem(list, "Submitted", node.submitted_at);
+    appendMetadataItem(list, "Submitted", formatTimestamp(node.submitted_at));
   }
   summary.append(
     createElement("span", "field-label", "Node attributes"),
@@ -313,22 +310,16 @@ function makeHeadingLink(node, path) {
 
 async function renderEmbedded(node, path) {
   if (node.missing) return createElement("div", "missing-node", `Missing child node: ${node.id}`);
+  const styled = displayStyles.render(node, path, "parent");
+  if (styled) return styled;
   switch (node.type) {
     case "page":
       return makeLinkedNodeSection(node, path);
     case "note": return renderNote(node, path);
     case "item_list": return renderItemList(node, path);
     case "item": return renderItem(node, path);
-    case "text": {
-      const block = createElement("section", "inline-block");
-      const link = makeHeadingLink({ ...node, display_title: textDisplayTitle(node) }, path);
-      link.className = "flow-text-link";
-      link.replaceChildren();
-      link.title = `Open ${textDisplayTitle(node)} text node`;
-      appendText(link, node.content, node);
-      block.append(link);
-      return block;
-    }
+    case "scratchpad": return renderScratchpad(node, path);
+    case "text": return renderText(node, path);
     case "todo_list": return renderTodoList(node, path);
     case "todo_item": {
       const panel = createElement("section", "todo-panel");
@@ -376,8 +367,17 @@ async function renderPage(article, node, path) {
 }
 
 async function renderDirectNode(article, node, path) {
+  const styled = displayStyles.render(node, path, "open");
+  if (styled) {
+    appendNodeHeader(article, node);
+    article.append(await styled);
+    return;
+  }
   switch (node.type) {
     case "page": await renderPage(article, node, path); return;
+    case "scratchpad":
+      appendNodeHeader(article, node, { eyebrow: "Scratchpad" });
+      article.append(renderScratchpad(node, path, true)); return;
     case "text":
       appendNodeHeader(article, { ...node, display_title: textDisplayTitle(node) }, {
         eyebrow: "Text node", showDescription: false,
@@ -397,7 +397,7 @@ async function renderDirectNode(article, node, path) {
       article.append(renderItem(node));
       return;
     case "todo_list":
-      appendNodeHeader(article, node, { eyebrow: "Todo list node", showDescription: false });
+      appendNodeHeader(article, node, { eyebrow: "Todo list node" });
       article.append(await renderTodoList(node, path, true));
       return;
     case "todo_item": {
@@ -459,7 +459,7 @@ async function displayNode(node, path, scrollY = 0) {
   viewState.currentNode = node;
   viewState.currentPath = cleanPath;
   elements.content.classList.remove("is-wide");
-  setShellActive(node.id === "home" ? "home" : "node");
+  setShellActive("node");
   renderBreadcrumbs(cleanPath, displayTitle);
   const article = createElement("article", "node-article");
   await renderDirectNode(article, node, cleanPath);
@@ -491,6 +491,12 @@ async function navigateNode(nodeId, pathHint, options = {}) {
 }
 
 function stateFromLocation() {
+  if (window.location.pathname === "/ui") return { view: "ui" };
+  if (window.location.pathname === "/top-down") return { view: "top-down" };
+  if (window.location.pathname === "/") {
+    const settings = uiViews.getSettings();
+    return settings.home_style === "top-down" ? { view: "top-down" } : { view: "node", nodeId: settings.home_node_id, path: null, scrollY: 0 };
+  }
   if (window.location.pathname === "/tree") return { view: "tree", scrollY: 0 };
   if (window.location.pathname === "/action-log") return { view: "action-log", scrollY: 0 };
   if (window.location.pathname === "/change-log") return { view: "change-log", scrollY: 0 };
@@ -509,47 +515,28 @@ function stateFromLocation() {
   return { view: "node", nodeId: "home", path: null, scrollY: 0 };
 }
 
-function bindShellEvents(bindSystemLink) {
-  for (const homeLink of [elements.brandHome, elements.navHome]) {
-    bindNodeLink(homeLink, "home", null);
-  }
-  bindSystemLink(elements.navTree, "tree");
-  bindSystemLink(elements.navActionLog, "action-log");
-  bindSystemLink(elements.navChangeLog, "change-log");
-  elements.navActionTypes.addEventListener("click", (event) => {
-    if (
-      event.defaultPrevented || event.button !== 0 || event.metaKey ||
-      event.ctrlKey || event.shiftKey || event.altKey
-    ) return;
-    event.preventDefault();
-    navigateActionTypes();
+function bindShellEvents() {
+  elements.brandHome.addEventListener("click", event => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault(); uiViews.showTopDown();
   });
-  elements.navNodeTypes.addEventListener("click", (event) => {
-    if (
-      event.defaultPrevented || event.button !== 0 || event.metaKey ||
-      event.ctrlKey || event.shiftKey || event.altKey
-    ) return;
+  document.querySelector(".system-nav").addEventListener("click", event => {
+    const link = event.target.closest("a");
+    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    navigateNodeTypes();
-  });
-  elements.navSearch.addEventListener("click", (event) => {
-    if (
-      event.defaultPrevented || event.button !== 0 || event.metaKey ||
-      event.ctrlKey || event.shiftKey || event.altKey
-    ) return;
-    event.preventDefault();
-    navigateSearch();
-  });
-  elements.navSnapshots.addEventListener("click", (event) => {
-    if (
-      event.defaultPrevented || event.button !== 0 || event.metaKey ||
-      event.ctrlKey || event.shiftKey || event.altKey
-    ) return;
-    event.preventDefault();
-    navigateSnapshots();
+    const view = link.dataset.view;
+    if (link.dataset.nodeId) { navigateNode(link.dataset.nodeId, null); return; }
+    if (view === "ui") uiViews.showSettings();
+    else if (view === "search") navigateSearch();
+    else if (view === "node-types") navigateNodeTypes();
+    else if (view === "action-types") navigateActionTypes();
+    else if (view === "snapshots") navigateSnapshots();
+    else navigateSystemView(view);
   });
   window.addEventListener("popstate", async (event) => {
     const state = event.state || stateFromLocation();
+    if (state.view === "ui") { uiViews.showSettings(true); return; }
+    if (state.view === "top-down") { uiViews.showTopDown(true); return; }
     if (state.view === "search") {
       if (state.query) {
         await performSearch(state.query, { replace: true, scrollY: state.scrollY });
@@ -577,13 +564,15 @@ function bindShellEvents(bindSystemLink) {
 }
 
 function initializeModules(nodeSchemas) {
+  ({ renderScratchpad, renderText } = createScratchpadRenderers({ makeHeadingLink, nodeSchemas }));
   ({ makeNodeEditor } = createEditors({
     deleteCurrentNode, nodeSchemas, refreshCurrentNode, showActionNotice,
+    makeDisplayEditor: node => displayStyles.makeEditor(node),
   }));
   ({ makeTodoComposer, renderTodoItem, renderTodoList } = createTodoRenderers({
     bindNodeLink, crumbFor, makeHeadingLink, nodeSchemas, refreshCurrentNode, showActionNotice,
   }));
-  ({ makeEventCard, renderCalendar, renderEventDetail, renderWeek } = createCalendarRenderers({
+  ({ makeEventCard, renderCalendar, renderCurrentWeek, renderEventDetail, renderWeek } = createCalendarRenderers({
     bindNodeLink, crumbFor, displayNode, makeHeadingLink, nodeSchemas, showActionNotice,
   }));
   ({ renderImage } = createMaterialRenderers({ makeHeadingLink }));
@@ -611,12 +600,17 @@ function initializeModules(nodeSchemas) {
     showError, showLoading, viewState,
   }));
   ({ navigateSearch, navigateSystemView, performSearch } = systemViews);
-  bindShellEvents(systemViews.bindSystemLink);
+  bindShellEvents();
 }
 
 async function start() {
   try {
-    initializeModules(await loadSchema());
+    uiViews = createUIViews({ elements, setHistory, setShellActive, renderBreadcrumbs, viewState });
+    const nodeSchemas = await loadSchema();
+    await uiViews.load();
+    displayStyles = createDisplayStyles({ uiViews, refreshCurrentNode,
+      renderers: { "calendar:parent:current-week": (node, path) => renderCurrentWeek(node, path) } });
+    initializeModules(nodeSchemas);
   } catch (error) {
     renderBreadcrumbs([{ id: "home", type: "page", title: "Home" }]);
     showError(error, "Restart MOSS web");
@@ -624,6 +618,8 @@ async function start() {
   }
   const route = stateFromLocation();
   const stored = history.state;
+  if (route.view === "ui") { uiViews.showSettings(true); return; }
+  if (route.view === "top-down") { uiViews.showTopDown(true); return; }
   if (route.view === "node-types") {
     navigateNodeTypes({
       replace: true,

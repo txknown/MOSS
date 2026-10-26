@@ -177,14 +177,19 @@ class Memory:
                 items.append(self.load_meta(path.name))
         return sorted(items, key=lambda meta: (meta.get("type", ""), meta.get("title", ""), meta["id"]))
 
-    def add_child(self, parent_id, child_id):
+    def add_child(self, parent_id, child_id, *, position="bottom"):
+        if position not in {"top", "bottom"}:
+            raise ValueError("position must be top or bottom")
         parent_id = self.clean_id(parent_id)
         child_id = self.clean_id(child_id)
         parent = self.load_meta(parent_id)
         if not self.node_exists(child_id):
             raise FileNotFoundError(child_id)
         if child_id not in parent.get("children", []):
-            parent["children"].append(child_id)
+            if position == "top":
+                parent["children"].insert(0, child_id)
+            else:
+                parent["children"].append(child_id)
             self.save_meta(parent_id, parent)
         self.rebuild_registry()
         return parent
@@ -236,6 +241,9 @@ class Memory:
             if changed:
                 meta["updated"] = self.now()
                 reference_updates.append((meta_path, raw_bytes, meta))
+
+        from core.ui_settings import renamed_presentation_records
+        reference_updates.extend(renamed_presentation_records(self, node_id, new_node_id))
 
         own_meta["id"] = new_node_id
         if isinstance(own_meta.get("children"), list):

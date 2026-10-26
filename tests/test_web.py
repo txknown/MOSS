@@ -306,7 +306,7 @@ class WebReadServiceTests(unittest.TestCase):
         event = week["child_nodes"][0]
         self.assertEqual(week["start_date"], "2026-08-31")
         self.assertEqual(week["attributes"]["start_date"], "2026-08-31")
-        self.assertEqual(week["display_title"], "Aug 31 – Sep 6, 2026")
+        self.assertEqual(week["display_title"], "2026-08-31 – 2026-09-06")
         self.assertEqual(event["title"], "Planning")
         self.assertEqual(event["description"], "Review the next steps.")
         self.assertEqual(event["day"], 2)
@@ -369,6 +369,7 @@ class WebReadServiceTests(unittest.TestCase):
             {
                 "/api/health",
                 "/api/schema",
+                "/api/ui-settings",
                 "/api/action-types",
                 "/api/snapshots",
                 "/api/node/{node_id}",
@@ -403,7 +404,7 @@ class WebReadServiceTests(unittest.TestCase):
         self.assertEqual(json.loads(body), {"current_version": "v1.0.1", "entries": entries})
         status, _headers, body = self.asgi_request(application, "/change-log")
         self.assertEqual(status, 200)
-        self.assertIn(b'id="nav-change-log"', body)
+        self.assertIn(b'class="system-nav"', body)
         status, _headers, _body = self.asgi_request(application, "/api/change-log", method="POST")
         self.assertEqual(status, 405)
         self.assertEqual(path.read_bytes(), source_before)
@@ -428,7 +429,7 @@ class WebReadServiceTests(unittest.TestCase):
         health = json.loads(body)
         self.assertFalse(health["read_only"])
         self.assertEqual(health["application"], "moss")
-        self.assertEqual(health["api_version"], 14)
+        self.assertEqual(health["api_version"], 15)
         self.assertEqual(
             health["write_capabilities"],
             [
@@ -538,6 +539,131 @@ class WebReadServiceTests(unittest.TestCase):
         )
         self.assertEqual(status, 404)
 
+    def test_scratchpad_jots_are_text_children_and_reads_preserve_data(self):
+        self.write_node("scratch", "scratchpad", title="Scratch")
+        application = create_app(self.root)
+        headers = {"origin": "http://testserver", "sec-fetch-site": "same-origin",
+                   "content-type": "application/json", "x-moss-request": "run-action"}
+        def action(name, payload):
+            status, _, body = self.asgi_request(application, "/api/actions", method="POST",
+                headers=headers, body=json.dumps({"action": name, "payload": payload}).encode())
+            return status, json.loads(body)
+        original = "  First thought.\n\nSecond line.\n"
+        status, response = action("jot", {"parent_id": "scratch", "content": original})
+        self.assertEqual(status, 200, response)
+        jot = response["created"]
+        self.assertEqual(jot["type"], "text")
+        self.assertEqual(jot["content"], original)
+        self.assertEqual(response["node"]["children"], [jot["id"]])
+        self.assertEqual(response["node"]["child_nodes"][0]["content"], original)
+        self.assertEqual(len((self.root / "memory/logs/action_log.txt").read_text().splitlines()), 2)
+        for payload in ({"parent_id": "scratch", "content": "  \n"},
+                        {"parent_id": "page_a", "content": "x"},
+                        {"parent_id": "scratch", "content": None}):
+            before = self.memory_digest()
+            self.assertEqual(action("jot", payload)[0], 422)
+            self.assertEqual(before, self.memory_digest())
+        status, response = action("update_node", {"node_id": jot["id"], "content": "Revised", "attributes": {}})
+        self.assertEqual(status, 200)
+        self.assertEqual(response["node"]["content"], "Revised")
+        before = self.memory_digest()
+        node = ReadService(self.root).get_node("scratch")
+        self.assertEqual(node["child_nodes"][0]["content"], "Revised")
+        self.assertEqual(before, self.memory_digest())
+
+    def test_confirmed_scratchpad_deletion_is_permanent_and_rejects_generic_parents(self):
+        self.write_node("scratch", "scratchpad", children=["own_text", "shared_text", "linked_text"])
+        for name in ("own_text", "shared_text", "linked_text"):
+            self.write_node(name, "text", content="Keep exact text")
+        self.write_node("other", "page", children=["shared_text"])
+        self.write_node("reference", "internal_link", target_id="linked_text")
+        application = create_app(self.root)
+        headers = {"origin": "http://testserver", "sec-fetch-site": "same-origin",
+                   "content-type": "application/json", "x-moss-request": "run-action"}
+        def remove(node_id, confirmation, parent_id="scratch"):
+            status, _, body = self.asgi_request(application, "/api/actions", method="POST", headers=headers,
+                body=json.dumps({"action": "remove_text", "payload": {
+                    "parent_id": parent_id, "node_id": node_id, "confirm_id": confirmation}}).encode())
+            return status, json.loads(body)
+        for node_id, confirmation, parent in [("own_text", "wrong", "scratch"),
+                ("shared_text", "shared_text", "other"), ("page_a", "page_a", "home")]:
+            before = self.memory_digest()
+            self.assertEqual(remove(node_id, confirmation, parent)[0], 422)
+            self.assertEqual(before, self.memory_digest())
+        for name in ("shared_text", "linked_text"):
+            status, response = remove(name, name)
+            self.assertEqual(status, 200, response)
+            self.assertEqual(response["result"]["operation"], "deleted")
+            self.assertNotIn(name, response["node"]["children"])
+            self.assertFalse((self.root / "memory/nodes" / name).exists())
+        status, response = remove("own_text", "own_text")
+        self.assertEqual(status, 200, response)
+        self.assertEqual(response["result"]["operation"], "deleted")
+        self.assertFalse((self.root / "memory/nodes/own_text").exists())
+        self.assertNotIn("shared_text", ReadService(self.root).get_node("other")["children"])
+
+    def test_week_date_projection_preserves_named_titles_and_stored_metadata(self):
+        self.write_node("year_boundary", "week", start_date="2026-12-28")
+        self.write_node("named_week", "week", start_date="2026-12-28", title="My December week")
+        before = self.memory_digest()
+        self.assertEqual(ReadService(self.root).get_node("year_boundary")["display_title"],
+                         "2026-12-28 – 2027-01-03")
+        self.assertEqual(ReadService(self.root).get_node("named_week")["display_title"], "My December week")
+        self.assertEqual(before, self.memory_digest())
+
+    def test_ui_settings_are_explicit_logged_and_separate_from_nodes(self):
+        application = create_app(self.root)
+        before = self.memory_digest()
+        status, _, body = self.asgi_request(application, "/api/ui-settings")
+        self.assertEqual(status, 200)
+        initial = json.loads(body)
+        from core.ui_settings import DEFAULTS
+        self.assertEqual(initial["settings"], DEFAULTS)
+        self.assertEqual([s["id"] for s in initial["schemes"]], ["moss-light", "moss-dark"])
+        self.assertEqual(before, self.memory_digest())
+        headers = {"origin":"http://testserver", "sec-fetch-site":"same-origin", "content-type":"application/json", "x-moss-request":"run-action"}
+        payload = {"scheme":"moss-dark", "home_style":"top-down", "home_node_id":"page_a", "navigation":DEFAULTS["navigation"]}
+        request = json.dumps({"action":"update_ui_settings", "payload":payload}).encode()
+        status, _, _ = self.asgi_request(application, "/api/actions", method="POST", body=request)
+        self.assertEqual(status, 403)
+        self.assertEqual(before, self.memory_digest())
+        nodes_before = {p:p.read_bytes() for p in (self.root / "memory/nodes").rglob("*") if p.is_file()}
+        status, _, body = self.asgi_request(application, "/api/actions", method="POST", headers=headers, body=request)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["result"]["settings"], payload)
+        self.assertEqual(json.loads((self.root / "memory/system/ui_settings.json").read_text()), payload)
+        self.assertEqual(nodes_before, {p:p.read_bytes() for p in (self.root / "memory/nodes").rglob("*") if p.is_file()})
+        before = self.memory_digest()
+        for invalid in [{"scheme":"uncreated"}, {"home_style":"other"}, {"home_node_id":"missing"}, {"home_node_id":"../home"}, {"scheme":{}}, {"extra":True}, {}]:
+            with self.subTest(payload=invalid):
+                status, _, _ = self.asgi_request(application, "/api/actions", method="POST", headers=headers, body=json.dumps({"action":"update_ui_settings", "payload":invalid}).encode())
+                self.assertEqual(status, 422)
+                self.assertEqual(before, self.memory_digest())
+        status, _, body = self.asgi_request(application, "/api/ui-settings")
+        self.assertEqual(json.loads(body)["settings"], payload)
+        self.assertEqual(before, self.memory_digest())
+        for route in ["/", "/ui", "/top-down"]:
+            self.assertEqual(self.asgi_request(application, route)[0], 200)
+
+    def test_display_preferences_api_is_allowlisted_logged_and_read_only(self):
+        application = create_app(self.root)
+        request = json.dumps({"action":"update_node_display", "payload":{
+            "node_id":"calendar_test", "parent":"current-week", "open":"default"}}).encode()
+        before = self.memory_digest()
+        self.assertEqual(self.asgi_request(application, "/api/actions", method="POST", body=request)[0], 403)
+        self.assertEqual(before, self.memory_digest())
+        headers = {"origin":"http://testserver", "content-type":"application/json", "x-moss-request":"run-action"}
+        status, _, body = self.asgi_request(application, "/api/actions", method="POST", headers=headers, body=request)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["result"]["styles"], {"parent":"current-week","open":"default"})
+        before = self.memory_digest()
+        status, _, body = self.asgi_request(application, "/api/ui-settings")
+        self.assertEqual(status, 200)
+        settings = json.loads(body)
+        self.assertEqual(settings["node_styles"]["calendar_test"]["parent"], "current-week")
+        self.assertEqual(settings["display_styles"]["calendar"]["parent"][1]["id"], "current-week")
+        self.assertEqual(before, self.memory_digest())
+
     def test_event_post_uses_action_runner_and_writes_one_log_entry(self):
         application = create_app(self.root)
         payload = json.dumps(
@@ -578,6 +704,70 @@ class WebReadServiceTests(unittest.TestCase):
         self.assertEqual(len(after), len(before) + 1)
         self.assertIn("created event", after[-1])
         self.assertNotIn("set title", after[-1])
+
+    def test_untimed_events_round_trip_and_partial_ranges_do_not_write(self):
+        application = create_app(self.root)
+        headers = {"origin": "http://testserver", "sec-fetch-site": "same-origin",
+                   "content-type": "application/json", "x-moss-request": "create-event"}
+        base = {"week_id": "week_test", "title": "Buy supplies", "day": 3}
+        for times in ({}, {"start_time": "", "end_time": ""}):
+            status, _, body = self.asgi_request(application, "/api/events", method="POST",
+                headers=headers, body=json.dumps({**base, **times}).encode())
+            self.assertEqual(status, 201, body)
+            event = json.loads(body)["event"]
+            self.assertEqual((event["day"], event["start_time"], event["end_time"]), (3, None, None))
+            self.assertIn(event["id"], json.loads(body)["week"]["children"])
+            before = self.memory_digest()
+            self.assertEqual(ReadService(self.root).get_node(event["id"])["start_time"], None)
+            self.assertEqual(before, self.memory_digest())
+        for times in ({"start_time": "09:00"}, {"end_time": "10:00"},
+                      {"start_time": "11:00", "end_time": "10:00"}):
+            before = self.memory_digest()
+            status, _, body = self.asgi_request(application, "/api/events", method="POST",
+                headers=headers, body=json.dumps({**base, **times}).encode())
+            self.assertEqual(status, 422, body)
+            self.assertEqual(before, self.memory_digest())
+
+    def test_checkbox_log_answers_round_trip_and_keep_snapshot(self):
+        from core.logs import validate_log_answers, safe_log_answers
+        from node_types.log_entry import render
+        prompts = [{"id": "done", "label": "Done", "type": "checkbox", "required": True}]
+        self.write_node("check_log", "log", title="Check log", prompts=prompts)
+        application = create_app(self.root)
+        headers = {"origin": "http://testserver", "sec-fetch-site": "same-origin",
+                   "content-type": "application/json", "x-moss-request": "run-action"}
+        def action(name, payload):
+            status, _, body = self.asgi_request(application, "/api/actions", method="POST",
+                headers=headers, body=json.dumps({"action": name, "payload": payload}).encode())
+            return status, json.loads(body)
+        for value in (False, True):
+            status, response = action("submit_log_entry", {"log_id": "check_log", "answers": {"done": value}})
+            self.assertEqual(status, 200, response)
+            entry_id = response["result"]["node_id"]
+            before = self.memory_digest()
+            entry = ReadService(self.root).get_node(entry_id)
+            self.assertIs(entry["answers"]["done"], value)
+            self.assertIn("Done: " + ("Yes" if value else "No"), render(None, {**entry, "id": entry_id}))
+            self.assertEqual(before, self.memory_digest())
+        status, response = action("update_log_entry", {"node_id": entry_id, "answers": {"done": False}})
+        self.assertEqual(status, 200, response)
+        self.assertIs(ReadService(self.root).get_node(entry_id)["answers"]["done"], False)
+        for value in ("false", 0, 1, None):
+            before = self.memory_digest()
+            status, _ = action("submit_log_entry", {"log_id": "check_log", "answers": {"done": value}})
+            self.assertEqual(status, 422)
+            self.assertEqual(before, self.memory_digest())
+        with self.assertRaises(ValueError):
+            validate_log_answers(prompts, {})
+        optional = [{**prompts[0], "required": False}]
+        self.assertEqual(validate_log_answers(optional, {}), {"done": False})
+        self.assertEqual(safe_log_answers(prompts, {"done": "false"}), {"done": ""})
+        status, response = action("update_log_template", {"node_id": "check_log", "prompts": [
+            {"id": "done", "label": "Notes", "type": "text", "required": False}]})
+        self.assertEqual(status, 200, response)
+        entry = ReadService(self.root).get_node(entry_id)
+        self.assertEqual(entry["prompts"], prompts)
+        self.assertIs(entry["answers"]["done"], False)
 
     def test_event_post_requires_same_origin_action_request(self):
         application = create_app(self.root)
@@ -975,7 +1165,7 @@ class WebReadServiceTests(unittest.TestCase):
         styles = (static_root / "styles.css").read_text(encoding="utf-8")
 
         self.assertIn('rendered.classList.add("page-child")', app_source)
-        self.assertIn('link.className = "flow-text-link"', app_source)
+        self.assertIn('link.className = "flow-text-link"', (static_root / "renderers" / "scratchpad.js").read_text())
         self.assertNotIn('createElement("div", "cards-grid")', app_source)
         self.assertIn(': makeHeadingLink(node, path)', material_source)
         self.assertIn('imageLink.target = "_blank"', material_source)
@@ -1044,11 +1234,11 @@ class WebReadServiceTests(unittest.TestCase):
         status, headers, body = self.asgi_request(application, "/")
         self.assertEqual(status, 200)
         self.assertIn(b'type="module"', body)
-        self.assertIn(b'/static/app.js?v=24', body)
-        self.assertIn(b'href="/search" id="nav-search"', body)
-        self.assertIn(b'href="/node-types" id="nav-node-types"', body)
-        self.assertIn(b'href="/action-types" id="nav-action-types"', body)
-        self.assertIn(b'href="/snapshots" id="nav-snapshots"', body)
+        self.assertIn(b'/static/app.js?v=35', body)
+        self.assertIn(b'href="/ui"', body)
+        _, _, settings_body = self.asgi_request(application, "/api/ui-settings")
+        targets = {item["target"] for item in json.loads(settings_body)["navigation_catalog"]}
+        self.assertTrue({"system:search", "system:node-types", "system:action-types", "system:snapshots", "system:change-log"}.issubset(targets))
         self.assertIn("script-src 'self'", headers["content-security-policy"])
 
         module_paths = (
@@ -1056,6 +1246,8 @@ class WebReadServiceTests(unittest.TestCase):
             "/static/api.js",
             "/static/dom.js",
             "/static/editors.js",
+            "/static/ui.js",
+            "/static/display_styles.js",
             "/static/renderers/calendar.js",
             "/static/renderers/content.js",
             "/static/renderers/materials.js",
@@ -1077,16 +1269,21 @@ class WebReadServiceTests(unittest.TestCase):
     def asgi_request(application, path, method="GET", headers=None, body=b""):
         messages = []
         request_sent = False
+        response_complete = asyncio.Event()
 
         async def receive():
             nonlocal request_sent
             if request_sent:
+                # Keep the synthetic client connected until streaming completes.
+                await response_complete.wait()
                 return {"type": "http.disconnect"}
             request_sent = True
             return {"type": "http.request", "body": body, "more_body": False}
 
         async def send(message):
             messages.append(message)
+            if message["type"] == "http.response.body" and not message.get("more_body", False):
+                response_complete.set()
 
         scope = {
             "type": "http",

@@ -12,6 +12,8 @@ from core.node_schema import module_contract
 
 def render(memory, meta, indent=0, render_child=None):
     lines = [f"{pad(indent)}{meta.get('title') or meta['id']}"]
+    if meta.get("description_visible", True) and meta.get("description"):
+        lines.extend(f"{pad(indent + 1)}{line}" for line in meta["description"].splitlines())
     children = meta.get("children", [])
     if children and render_child:
         for child_id in children:

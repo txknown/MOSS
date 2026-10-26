@@ -1,0 +1,42 @@
+[
+  {
+    "id": "moss-light",
+    "name": "MOSS light",
+    "mode": "light",
+    "colors": {
+      "color-canvas": "#f4f3ed",
+      "color-surface": "#fffef9",
+      "color-surface-soft": "#f0f3e9",
+      "color-text": "#20251f",
+      "color-muted": "#697066",
+      "color-faint": "#8b9188",
+      "color-accent": "#345b3b",
+      "color-accent-strong": "#26482e",
+      "color-accent-soft": "#e4ecdf",
+      "color-border": "#d9ddd2",
+      "color-border-strong": "#c5ccbe",
+      "color-danger-soft": "#f5ebe3",
+      "color-danger": "#76503f"
+    }
+  },
+  {
+    "id": "moss-dark",
+    "name": "MOSS dark",
+    "mode": "dark",
+    "colors": {
+      "color-canvas": "#101713",
+      "color-surface": "#19231c",
+      "color-surface-soft": "#202e24",
+      "color-text": "#e3ebdf",
+      "color-muted": "#b4c3b0",
+      "color-faint": "#97aa94",
+      "color-accent": "#345b3b",
+      "color-accent-strong": "#a1c99d",
+      "color-accent-soft": "#2a412d",
+      "color-border": "#344a38",
+      "color-border-strong": "#4b6650",
+      "color-danger-soft": "#3a2923",
+      "color-danger": "#e5b49c"
+    }
+  }
+]

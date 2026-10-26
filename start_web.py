@@ -15,7 +15,7 @@ from web.server import PROJECT_ROOT, app
 
 HOST = "127.0.0.1"
 PORT = 8766
-HOME_URL = f"http://{HOST}:{PORT}/node/home"
+HOME_URL = f"http://{HOST}:{PORT}/"
 HEALTH_URL = f"http://{HOST}:{PORT}/api/health"
 
 

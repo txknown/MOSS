@@ -1,6 +1,6 @@
 "use strict";
 
-import { createElement } from "../dom.js?v=24";
+import { createElement } from "../dom.js?v=35";
 
 
 const IMAGE_SIZE_PRESETS = {

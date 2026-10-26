@@ -17,6 +17,7 @@ from core.node_normalization import normalize_node_meta, schema_default
 from core.node_schema import NODE_SCHEMAS, get_node_schema_or_none, public_schema
 from core.snapshots import list_snapshot_records, snapshot_archive_path
 from core.urls import safe_web_url
+from core.system_views import SYSTEM_TARGETS
 
 NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 NAVIGATION_TYPES = {
@@ -516,8 +517,16 @@ class ReadService:
 
         result["internal_target"] = None
         if node_type == "internal_link" and result["target_id"]:
+            system_target = SYSTEM_TARGETS.get(result["target_id"])
             target = index.get(result["target_id"])
-            if target is not None:
+            if system_target is not None:
+                result["internal_target"] = {
+                    "id": result["target_id"],
+                    "type": "system",
+                    "title": system_target[0],
+                    "url": system_target[1],
+                }
+            elif target is not None:
                 result["internal_target"] = {
                     "id": target["id"],
                     "type": target["type"],
@@ -759,7 +768,7 @@ class ReadService:
                 pass
             else:
                 end = start + timedelta(days=6)
-                return f"{start.strftime('%b')} {start.day} – {end.strftime('%b')} {end.day}, {end.year}"
+                return f"{start.isoformat()} – {end.isoformat()}"
         if meta.get("type") == "log_entry":
             entry_date = self._nullable_text(meta.get("entry_date"))
             if entry_date:

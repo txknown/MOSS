@@ -1,7 +1,8 @@
 "use strict";
+import { formatTimestamp } from "../dates.js?v=35";
 
-import { runMossAction, apiJson } from "../api.js?v=24";
-import { createElement } from "../dom.js?v=24";
+import { runMossAction, apiJson } from "../api.js?v=35";
+import { createElement } from "../dom.js?v=35";
 
 
 function padNumber(value) {
@@ -35,7 +36,7 @@ function snapshotRecord(snapshot) {
     createElement(
       "p",
       "snapshot-created",
-      snapshot.created || snapshot.modified || "Creation time unavailable",
+      formatTimestamp(snapshot.created || snapshot.modified) || "Creation time unavailable",
     ),
   );
   heading.append(identity);

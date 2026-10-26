@@ -63,7 +63,8 @@ def import_todos(project_root, todo_list_id, file_path, dry_run=False):
     memory = Memory(project_root=project_root)
     runner = ActionRunner(memory)
     created_ids = []
-    for text in todos:
+    # New todos prepend; preserve the source's reading order within this batch.
+    for text in reversed(todos):
         created = runner.run(
             "create_node",
             payload={"type": "todo_item", "content": f"{text}\n"},
@@ -75,7 +76,7 @@ def import_todos(project_root, todo_list_id, file_path, dry_run=False):
             payload={"parent_id": target_id, "child_id": node_id},
             log=False,
         )
-        created_ids.append(node_id)
+        created_ids.insert(0, node_id)
 
     runner.write_log(f"imported {len(created_ids)} todo items into {target_id}")
     return target_id, todos, created_ids

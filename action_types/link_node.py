@@ -32,7 +32,8 @@ def run(memory, payload, runner=None):
             )
     if child_id in parent.get("children", []):
         raise ValueError(f"{child_id} is already linked to {parent_id}")
-    memory.add_child(parent_id, child_id)
+    position = parent_schema.child_insert_position if parent_schema else "bottom"
+    memory.add_child(parent_id, child_id, position=position)
     return {
         "parent_id": parent_id,
         "child_id": child_id,

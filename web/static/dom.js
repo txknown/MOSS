@@ -1,4 +1,5 @@
 "use strict";
+import { parseDateOnly } from "./dates.js?v=35";
 
 export function createElement(tag, className, text) {
   const node = document.createElement(tag);
@@ -117,4 +118,17 @@ export function shortExcerpt(text, maximum) {
     return compact;
   }
   return `${compact.slice(0, maximum).trimEnd()}…`;
+}
+
+export function configureDateInput(control) {
+  control.type = "text";
+  control.placeholder = "YYYY-MM-DD";
+  control.pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}";
+  control.maxLength = 10;
+  control.title = "Use YYYY-MM-DD";
+  const validate = () => control.setCustomValidity(
+    !control.value || parseDateOnly(control.value) ? "" : "Enter a valid date as YYYY-MM-DD.",
+  );
+  control.addEventListener("input", validate);
+  validate();
 }

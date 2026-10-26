@@ -1,7 +1,7 @@
 "use strict";
 
-import { apiJson } from "../api.js?v=24";
-import { createElement, displayValue, humanLabel } from "../dom.js?v=24";
+import { apiJson } from "../api.js?v=35";
+import { createElement, displayValue, humanLabel } from "../dom.js?v=35";
 
 
 function schemaValue(value) {

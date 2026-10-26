@@ -9,6 +9,7 @@ from typing import Any
 from core.node_schema import CONTENT_MAX_LENGTH, get_node_schema
 from core.logs import validate_log_prompts
 from core.urls import validate_web_url
+from core.system_views import SYSTEM_TARGETS
 
 
 def validate_content(value: Any) -> str:
@@ -65,6 +66,10 @@ def validate_attribute_values(meta: dict[str, Any], attributes: Any) -> dict[str
 
 
 def validate_attribute_value(field: str, value: Any, value_type: str | None) -> Any:
+    if value_type == "internal_target":
+        if isinstance(value, str) and value.strip().lower() in SYSTEM_TARGETS:
+            return value.strip().lower()
+        return validate_attribute_value(field, value, "node_id")
     if value_type == "web_url":
         try:
             return validate_web_url(value)

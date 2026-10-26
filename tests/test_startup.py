@@ -63,6 +63,18 @@ class SkeletonStartupTests(unittest.TestCase):
         for name in ("settings", "counters"):
             self.assertEqual(json.loads((self.root / f"memory/system/{name}.json").read_text()), {})
         self.assertFalse((self.root / "snapshots").exists())
+        from core.ui_settings import read_settings
+        before = file_digest(self.root)
+        settings = read_settings(Memory(self.root, initialize=False))
+        self.assertEqual(settings["scheme"], "moss-light")
+        self.assertEqual(settings["home_style"], "node")
+        self.assertEqual(settings["home_node_id"], "home")
+        self.assertTrue(all(item["target"] == "home" or item["target"].startswith("system:") for item in settings["navigation"]))
+        self.assertEqual(file_digest(self.root), before)
+        self.assertFalse((self.root / "memory/system/ui_settings.json").exists())
+        self.assertFalse((self.root / "memory/system/node_display.json").exists())
+        self.assertEqual(start_web.HOME_URL, "http://127.0.0.1:8766/")
+
 
     def test_relaunch_preserves_existing_data(self):
         memory = Memory(self.root)

@@ -162,7 +162,7 @@ class MossV02Tests(unittest.TestCase):
         )
 
         rendered = render_node(self.memory, calendar_id)
-        self.assertIn("Week of Aug 31 – Sep 6, 2026", rendered)
+        self.assertIn("Week of 2026-08-31 – 2026-09-06", rendered)
         self.assertIn("Planning", rendered)
         self.assertIn("Tuesday, 09:00–10:30", rendered)
         self.assertIn("Review the next steps.", rendered)
@@ -425,10 +425,12 @@ class MossV02Tests(unittest.TestCase):
 
         self.assertEqual(
             self.memory.load_meta(parent)["children"],
-            ["child_one", "child_two"],
+            ["child_two", "child_one"],
         )
         rendered = render_node(self.memory, todo_list)
-        self.assertLess(rendered.index("[x] First child"), rendered.index("[ ] Second child"))
+        self.assertLess(rendered.index("[ ] Second child"), rendered.index("[x] First child"))
+        self.actions.run("move_child", {"parent_id": parent, "child_id": "child_one", "position": "top"})
+        self.assertEqual(self.memory.load_meta(parent)["children"], ["child_one", "child_two"])
 
     def test_relationship_noops_do_not_write_or_log(self):
         parent = self.create("page", "parent")
@@ -482,7 +484,10 @@ class MossV02Tests(unittest.TestCase):
         self.assertEqual(format_search_results("absent", search_nodes(self.memory, "absent")), "Search: absent\n\nNo results")
 
     def test_importer_dry_run_then_real_import(self):
-        target = self.create("todo_list", "test_todos")
+        target = self.create("todo_list", "master_todos")
+        existing = self.actions.run("create_child", {
+            "parent_id": target, "type": "todo_item", "content": "Existing task",
+        })["node_id"]
         source = self.root / "todos.txt"
         source.write_text("- First\n[ ] Second\n- [ ] Third\n\n", encoding="utf-8")
         before = self._memory_digest()
@@ -492,14 +497,14 @@ class MossV02Tests(unittest.TestCase):
 
         _, _, created = import_todos(self.root, target, source)
         self.assertEqual(len(created), 3)
-        self.assertEqual(self.memory.load_meta(target)["children"], created)
+        self.assertEqual(self.memory.load_meta(target)["children"], [*created, existing])
         for node_id, text in zip(created, ("First", "Second", "Third")):
             meta = self.memory.load_meta(node_id)
             self.assertIs(meta["checked"], False)
             self.assertIsNone(meta["date_completed"])
             self.assertEqual(self.memory.read_content(node_id).strip(), text)
         log = (self.memory.logs / "action_log.txt").read_text(encoding="utf-8")
-        self.assertEqual(log.count("imported 3 todo items into test_todos"), 1)
+        self.assertEqual(log.count("imported 3 todo items into master_todos"), 1)
 
     def test_core_version_logs_once(self):
         self.actions.run("update_core_version", {"version": "v0.2"})

@@ -1,7 +1,8 @@
 "use strict";
+import { formatTimestamp } from "../dates.js?v=35";
 
-import { apiJson, runMossAction } from "../api.js?v=24";
-import { createElement } from "../dom.js?v=24";
+import { apiJson, runMossAction } from "../api.js?v=35";
+import { createElement } from "../dom.js?v=35";
 
 
 export function createTodoRenderers({
@@ -48,7 +49,7 @@ export function createTodoRenderers({
     content.append(createElement("span", "todo-node-id", `ID · ${item.id}`));
     if (item.checked && item.date_completed) {
       content.append(
-        createElement("span", "completion-date", `Completed ${item.date_completed}`),
+        createElement("span", "completion-date", `Completed ${formatTimestamp(item.date_completed)}`),
       );
     }
     main.append(mark, content);
@@ -131,9 +132,10 @@ export function createTodoRenderers({
       heading.append(makeHeadingLink(node, path));
       panel.append(heading);
     }
-    if (direct) {
-      panel.append(makeTodoComposer(node));
+    if (!direct && node.description_visible && node.description) {
+      panel.append(createElement("p", "node-description", node.description));
     }
+    panel.append(makeTodoComposer(node));
 
     let items = Array.isArray(node.child_nodes) ? node.child_nodes : null;
     if (items === null) {
@@ -149,7 +151,7 @@ export function createTodoRenderers({
     const openItems = items.filter((item) => !item.checked);
     const completedItems = items.filter((item) => item.checked);
     const list = createElement("ul", "todo-list");
-    const visibleItems = direct ? openItems : openItems.slice(0, 2);
+    const visibleItems = direct ? openItems : openItems.slice(0, 4);
     for (const item of visibleItems) {
       if (item.missing) {
         list.append(

@@ -53,17 +53,17 @@ def run(memory, payload, runner=None):
     )
     start_time = validate_attribute_value(
         "start_time",
-        payload.get("start_time"),
+        payload.get("start_time", ""),
         event_schema.attribute("start_time").value_type,
     )
     end_time = validate_attribute_value(
         "end_time",
-        payload.get("end_time"),
+        payload.get("end_time", ""),
         event_schema.attribute("end_time").value_type,
     )
-    if not start_time or not end_time:
-        raise ValueError("Event start and end times are required")
-    if end_time <= start_time:
+    if bool(start_time) != bool(end_time):
+        raise ValueError("Supply both event times, or leave both blank for a day item")
+    if start_time and end_time <= start_time:
         raise ValueError("Event end time must be later than its start time")
 
     event_id = None
@@ -95,8 +95,9 @@ def run(memory, payload, runner=None):
             runner.run("trash_node", {"node_id": event_id}, log=False)
         raise
 
+    time_label = f"{start_time}–{end_time}" if start_time else "no time"
     return {
         "node_id": event_id,
         "week_id": week_id,
-        "log": f"created event {event_id} in {week_id}: {title} (day {day}, {start_time}–{end_time})",
+        "log": f"created event {event_id} in {week_id}: {title} (day {day}, {time_label})",
     }

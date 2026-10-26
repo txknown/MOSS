@@ -6,7 +6,9 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Static
 
 from core.action_runner import ActionRunner
+from core.action_catalog import ACTION_SPECS
 from core.memory import Memory
+from core.node_schema import NODE_SCHEMAS
 from core.renderer import render_node
 from core.registry import known_node_types, load_node_type
 from core.search import format_search_results, search_nodes
@@ -44,31 +46,7 @@ Commands:
   refresh
   quit
 
-Node types:
-  page
-  text
-  note
-  todo_list
-  todo_item
-  image
-  randomizer
-  calendar
-  week
-  event
-""".strip()
-
-TYPE_LABELS = {
-    "page": "page",
-    "text": "text",
-    "note": "note",
-    "todo_list": "todo_list",
-    "todo_item": "todo_item",
-    "image": "image",
-    "randomizer": "randomizer",
-    "calendar": "calendar",
-    "week": "week",
-    "event": "event",
-}
+""".strip() + "\n\nNode types:\n  " + "\n  ".join(NODE_SCHEMAS)
 
 NAVIGATION_ITEMS = [
     ("home", "Home"),
@@ -78,20 +56,9 @@ NAVIGATION_ITEMS = [
     ("action_log", "Action Log"),
 ]
 
-NODE_TYPE_HELP = {
-    "page": "container node; may include a title and optional visible/hidden description",
-    "text": "inline content node; renders content directly on parent pages",
-    "note": "titled content node; renders as a card/link on parent pages and displays full content when opened",
-    "todo_list": "container node; holds todo_item children and handles list ordering behavior",
-    "todo_item": "content node with checked and system-managed date_completed",
-    "image": "reference node; points to a material/source path",
-    "randomizer": "content node containing one phrase per line; renders a random selection",
-    "calendar": "container node; presents week children as a calendar",
-    "week": "container node; starts on a Monday and holds event children",
-    "event": "scheduled node with a title, notes, weekday number, start time, and end time",
-}
-
-PARENT_TYPES = {"page", "todo_list", "calendar", "week"}
+TYPE_LABELS = {name: name for name in NODE_SCHEMAS}
+NODE_TYPE_HELP = {name: schema.description for name, schema in NODE_SCHEMAS.items()}
+PARENT_TYPES = {name for name, schema in NODE_SCHEMAS.items() if schema.allowed_child_types}
 
 
 class NavigationItem(ListItem):
@@ -500,37 +467,9 @@ class MossApp(App):
 
     async def _show_action_types(self):
         self.selected_id = None
-        lines = [
-            "All Action Types",
-            "",
-            "Tree actions:",
-            "- new",
-            "- link",
-            "- unlink",
-            "- move",
-            "- trash",
-            "",
-            "Content/attribute actions:",
-            "- set",
-            "- add",
-            "- edit",
-            "- setattr",
-            "",
-            "Memory/safety actions:",
-            "- snapshot",
-            "",
-            "System/read actions:",
-            "- home",
-            "- open",
-            "- info / attributes",
-            "- search",
-            "- all pages",
-            "- all node types",
-            "- all action types",
-            "- action log",
-            "- history",
-            "- refresh",
-        ]
+        lines = ["All Action Types", ""]
+        lines.extend(f"- {spec.name}: {spec.summary}" for spec in ACTION_SPECS)
+        lines.extend(["", "Use help for terminal commands; actions are also available through ActionRunner."])
         self.query_one("#detail", Static).update("\n".join(lines))
         await self._set_child_items([])
         self._update_status()

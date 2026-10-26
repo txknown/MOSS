@@ -1,7 +1,7 @@
 "use strict";
 
-import { runMossAction } from "../api.js?v=24";
-import { createElement } from "../dom.js?v=24";
+import { runMossAction } from "../api.js?v=35";
+import { createElement, configureDateInput } from "../dom.js?v=35";
 
 
 function choiceIndex(prompt, value) {
@@ -39,17 +39,22 @@ function makeAnswerFields(prompts, currentAnswers = {}, useToday = false) {
         option.selected = choiceIndex(prompt, current) === index;
         control.append(option);
       }
+    } else if (prompt.type === "checkbox") {
+      control = createElement("input");
+      control.type = "checkbox";
+      control.checked = current === true;
+      field.classList.add("is-checkbox");
     } else if (prompt.type === "date") {
       control = createElement("input");
-      control.type = "date";
       control.value = current || (useToday ? localToday() : "");
+      configureDateInput(control);
     } else {
       control = createElement("textarea");
       control.rows = 4;
       control.value = current || "";
       field.classList.add("is-wide");
     }
-    control.required = Boolean(prompt.required);
+    control.required = prompt.type !== "checkbox" && Boolean(prompt.required);
     control.name = prompt.id;
     controls.set(prompt.id, control);
     field.append(control);
@@ -65,6 +70,8 @@ function makeAnswerFields(prompts, currentAnswers = {}, useToday = false) {
           values[prompt.id] = control.value === ""
             ? ""
             : prompt.options[Number(control.value)];
+        } else if (prompt.type === "checkbox") {
+          values[prompt.id] = control.checked;
         } else {
           values[prompt.id] = control.value;
         }
@@ -81,7 +88,7 @@ function appendAnswerList(container, prompts, answers) {
     const value = answers?.[prompt.id];
     item.append(
       createElement("dt", "log-answer-label", prompt.label),
-      createElement("dd", "log-answer-value", value === "" || value == null ? "—" : String(value)),
+      createElement("dd", "log-answer-value", value === "" || value == null ? "—" : (prompt.type === "checkbox" ? (value ? "Yes" : "No") : String(value))),
     );
     list.append(item);
   }
@@ -136,7 +143,7 @@ function makeTemplateEditor(node, refreshCurrentNode) {
       const typeField = createElement("label", "edit-field");
       typeField.append(createElement("span", "edit-field-label", "Answer type"));
       const typeSelect = createElement("select");
-      for (const [value, label] of [["text", "Free text"], ["date", "Date"], ["choice", "Restricted choices"]]) {
+      for (const [value, label] of [["text", "Free text"], ["date", "Date"], ["choice", "Restricted choices"], ["checkbox", "Checkbox (Yes / No)"]]) {
         const option = createElement("option", null, label);
         option.value = value;
         option.selected = prompt.type === value;
@@ -161,14 +168,18 @@ function makeTemplateEditor(node, refreshCurrentNode) {
       requiredField.append(requiredInput, createElement("span", "edit-field-label", "Required"));
 
       const controls = createElement("div", "log-prompt-controls");
-      for (const [label, delta] of [["↑", -1], ["↓", 1]]) {
+      for (const [label, destination, direction] of [
+        ["Top", 0, "to top"], ["↑", index - 1, "up"],
+        ["↓", index + 1, "down"], ["Bottom", prompts.length - 1, "to bottom"],
+      ]) {
         const button = createElement("button", "quiet-button", label);
         button.type = "button";
-        button.disabled = index + delta < 0 || index + delta >= prompts.length;
-        button.setAttribute("aria-label", `Move prompt ${delta < 0 ? "up" : "down"}`);
+        button.disabled = destination < 0 || destination >= prompts.length || destination === index;
+        button.setAttribute("aria-label", `Move prompt ${direction}`);
+        button.title = `Move ${direction}`;
         button.addEventListener("click", () => {
           const [moved] = prompts.splice(index, 1);
-          prompts.splice(index + delta, 0, moved);
+          prompts.splice(destination, 0, moved);
           renderRows();
         });
         controls.append(button);

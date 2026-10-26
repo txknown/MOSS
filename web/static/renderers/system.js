@@ -1,7 +1,8 @@
 "use strict";
+import { formatTimestamp } from "../dates.js?v=35";
 
-import { apiJson } from "../api.js?v=24";
-import { createElement, humanLabel, makeLabeledSection } from "../dom.js?v=24";
+import { apiJson } from "../api.js?v=35";
+import { createElement, humanLabel, makeLabeledSection } from "../dom.js?v=35";
 
 
 export function createSystemViews({
@@ -356,7 +357,7 @@ export function createSystemViews({
       row.classList.add(`is-${kind}`);
       row.append(createElement("span", "log-kind", humanLabel(entry.verb || kind)));
       if (entry.timestamp) {
-        row.append(createElement("time", "log-time", entry.timestamp));
+        row.append(createElement("time", "log-time", formatTimestamp(entry.timestamp)));
       } else {
         row.append(createElement("span", "log-time", "No timestamp"));
       }
@@ -383,12 +384,12 @@ export function createSystemViews({
     elements.content.classList.remove("is-wide");
     renderBreadcrumbs([
       { id: "home", type: "page", title: "Home" },
-      { id: "change-log", type: "system", title: "MOSS Change log" },
-    ], "MOSS Change log");
+      { id: "change-log", type: "system", title: "MOSS version log" },
+    ], "MOSS version log");
     const article = createElement("article", "node-article system-view");
     const header = createElement("header", "system-view-header");
     header.append(
-      createElement("h1", "search-title", "MOSS Change log"),
+      createElement("h1", "search-title", "MOSS version log"),
       createElement("p", "search-summary", data.current_version
         ? `Current version: ${data.current_version} · newest first`
         : "No releases have been recorded."),
@@ -406,7 +407,7 @@ export function createSystemViews({
       article.append(section);
     }
     elements.content.replaceChildren(article);
-    document.title = "MOSS Change log · MOSS";
+    document.title = "MOSS version log · MOSS";
     requestAnimationFrame(() => window.scrollTo(0, Number(scrollY) || 0));
   }
 

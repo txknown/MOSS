@@ -13,9 +13,13 @@ class ActionSpec:
 
 
 ACTION_SPECS = (
+    ActionSpec("update_node_display", "Save parent and open display styles separately from node content."),
+    ActionSpec("update_ui_settings", "Save presentation preferences separately from nodes."),
     ActionSpec("create_node", "Create a new unlinked node record."),
     ActionSpec("convert_node_type", "Convert a compatible node while preserving its identity."),
     ActionSpec("rename_node", "Rename a node ID and update its structured references."),
+    ActionSpec("jot", "Save a new text jot inside a scratchpad."),
+    ActionSpec("remove_text", "Permanently delete a confirmed text jot from a scratchpad."),
     ActionSpec("create_child", "Create a node and link it to a parent as one action."),
     ActionSpec("create_item", "Create a structured item in an item list."),
     ActionSpec("create_event", "Create and schedule an event within a week."),

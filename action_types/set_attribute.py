@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from core.node_validation import validate_attribute_values
+from core.system_views import SYSTEM_TARGETS
 
 
 def run(memory, payload, runner=None):
@@ -16,7 +17,7 @@ def run(memory, payload, runner=None):
     field = str(field).strip().lower()
     value = validate_attribute_values(meta, {field: value})[field]
     if meta.get("type") == "internal_link" and field == "target_id":
-        if not memory.node_exists(value):
+        if value not in SYSTEM_TARGETS and not memory.node_exists(value):
             raise FileNotFoundError(f"Internal link target not found: {value}")
 
     was_checked = meta.get("checked", False) is True

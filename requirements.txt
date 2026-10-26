@@ -1,3 +1,4 @@
-textual
-fastapi
-uvicorn
+# Direct dependency versions tested for MOSS v1.1.0.
+textual==8.2.8
+fastapi==0.142.2
+uvicorn==0.54.0

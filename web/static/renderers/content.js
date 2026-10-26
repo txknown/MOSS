@@ -1,11 +1,11 @@
 "use strict";
 
-import { runMossAction } from "../api.js?v=24";
+import { runMossAction } from "../api.js?v=35";
 import {
   applyTextPresentation,
   appendText,
   createElement,
-} from "../dom.js?v=24";
+} from "../dom.js?v=35";
 
 
 const NOTE_PREVIEW_LENGTH = 420;
@@ -167,7 +167,11 @@ export function createContentRenderers({ bindNodeLink, makeHeadingLink, nodeSche
     const label = node.display_title || node.title || target?.title || node.target_id || node.id;
     if (target) {
       const link = createElement("a", direct ? "named-link named-link-direct" : "named-link", label);
-      bindNodeLink(link, target.id, null);
+      if (target.type === "system" && /^\/[a-z-]+$/.test(target.url || "")) {
+        link.href = target.url;
+      } else {
+        bindNodeLink(link, target.id, null);
+      }
       link.append(createElement("span", "named-link-arrow", "→"));
       if (direct) {
         panel.append(link, createElement("p", "internal-link-target", `${target.type} · ID · ${target.id}`));
@@ -197,6 +201,13 @@ export function createContentRenderers({ bindNodeLink, makeHeadingLink, nodeSche
       panel.append(heading);
     }
 
+    const content = direct ? panel : makeHeadingLink(node, path);
+    if (!direct) {
+      content.className = "flow-text-link";
+      content.replaceChildren();
+      content.title = "Open randomizer";
+      panel.append(content);
+    }
     const selections = Array.isArray(node.random_selection)
       ? node.random_selection
       : [];
@@ -209,7 +220,7 @@ export function createContentRenderers({ bindNodeLink, makeHeadingLink, nodeSche
       if (!text.childElementCount) {
         text.append(createElement("p", "empty-message", "No phrases."));
       }
-      panel.append(text);
+      content.append(text);
     } else {
       const list = createElement("ul", "random-list");
       applyTextPresentation(list, node);
@@ -219,7 +230,7 @@ export function createContentRenderers({ bindNodeLink, makeHeadingLink, nodeSche
       if (!list.childElementCount) {
         list.append(createElement("li", "empty-message", "No phrases."));
       }
-      panel.append(list);
+      content.append(list);
     }
     return panel;
   }

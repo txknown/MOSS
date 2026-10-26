@@ -1,7 +1,7 @@
 "use strict";
 
-import { runMossAction } from "../api.js?v=24";
-import { createElement, displayValue } from "../dom.js?v=24";
+import { runMossAction } from "../api.js?v=35";
+import { createElement, displayValue } from "../dom.js?v=35";
 
 
 const EMBEDDED_ITEM_LIMIT = 8;

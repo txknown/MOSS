@@ -1,5 +1,19 @@
 [
   {
+    "version": "v1.1.0",
+    "date": "2026-10-23",
+    "changes": [
+      "Add scratchpads with ordinary text jots, parent-page composers, newest-first history, inline editing, and confirmed permanent deletion through validated actions.",
+      "Add fixed proportional weekly schedules, untimed day items, week notes and goals, consistent ISO date entry, and year-aware abbreviated date ranges. Keep schedules fixed when events overlap.",
+      "Add checkbox log prompts and vertically arranged answers while preserving historical prompt snapshots. Add Top and Bottom ordering controls, newer todos first, and embedded todo creation.",
+      "Add MOSS UI with saved light and dark schemes, configurable home and top-down startup, and editable navigation to nodes and allowlisted built-in system views.",
+      "Add reusable display styles with separate parent and opened-node selections, a Calendar Current week parent style, an expandable UI catalog, and Python-validated presentation files outside node content.",
+      "Extend internal links to system views and preserve presentation references during node renames. Keep missing references visible and default styles backward-compatible.",
+      "Preserve clean first-launch initialization, installation-relative storage, local-only serving, occupied-port isolation, and read-only projections. Derive terminal type help and child navigation from the canonical schema and list actions from the shared catalog.",
+      "Update public documentation for setup, upgrades, backup recovery, architecture, agent access, and extensions. Keep the public release free of workspace data and record tested direct dependency versions."
+    ]
+  },
+  {
     "version": "v1.0.0",
     "date": "2026-09-30",
     "changes": [

@@ -18,5 +18,7 @@ def render(memory, meta, indent=0, render_child=None):
     lines = [f"{pad(indent)}{title}"]
     for prompt in prompts:
         value = answers.get(prompt["id"], "")
-        lines.append(f"{pad(indent + 1)}{prompt['label']}: {value or '—'}")
+        if prompt["type"] == "checkbox" and isinstance(value, bool):
+            value = "Yes" if value else "No"
+        lines.append(f"{pad(indent + 1)}{prompt['label']}: {'—' if value == '' else value}")
     return "\n".join(lines)

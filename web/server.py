@@ -12,6 +12,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from core.action_catalog import public_action_types
 from core.action_runner import ActionRunner
 from core.memory import Memory
+from core.ui_settings import read_settings, saved_schemes, navigation_catalog
+from core.display_styles import STYLE_CATALOG, read_node_styles
 from web.read_service import (
     MalformedNodeError,
     MaterialNotFoundError,
@@ -25,6 +27,10 @@ from web.read_service import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 WEB_ACTIONS = {
+    "update_ui_settings",
+    "update_node_display",
+    "jot",
+    "remove_text",
     "create_child",
     "create_item",
     "link_node",
@@ -144,7 +150,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
         return {
             **service.health(),
             "application": "moss",
-            "api_version": 14,
+            "api_version": 15,
             "read_only": False,
             "write_capabilities": [
                 "events:create",
@@ -168,6 +174,13 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
     def node(node_id: str):
         with write_lock:
             return service.get_node(node_id)
+
+    @application.get("/api/ui-settings")
+    def ui_settings():
+        with write_lock:
+            return {"settings": read_settings(actions.memory), "schemes": saved_schemes(),
+                    "navigation_catalog": navigation_catalog(), "display_styles": STYLE_CATALOG,
+                    "node_styles": read_node_styles(actions.memory)}
 
     @application.get("/api/schema")
     def schema():
@@ -249,7 +262,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
                 "result": result,
                 "node": service.get_node(primary_id) if primary_id else None,
             }
-            if action_name in {"create_child", "create_item"}:
+            if action_name in {"create_child", "create_item", "jot"}:
                 response["created"] = service.get_node(result["node_id"])
             return response
 
@@ -296,6 +309,8 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
         )
 
     application.add_api_route("/", frontend, methods=["GET"], include_in_schema=False)
+    application.add_api_route("/ui", frontend, methods=["GET"], include_in_schema=False)
+    application.add_api_route("/top-down", frontend, methods=["GET"], include_in_schema=False)
     application.add_api_route(
         "/node/{node_id}",
         frontend,
